@@ -885,7 +885,15 @@
       return;
     }
     const stamp = formatStamp(new Date());
-    downloadTextFile('INVN_SURGELE_' + stamp + '.csv', ginsoftText, 'text/csv');
+    // Fichier au format .txt (pas .csv) : ce n'est pas un vrai CSV (aucun
+    // séparateur, largeur fixe) et une extension .csv sur iPhone peut pousser
+    // certaines applications (Numbers, aperçu Fichiers) à le réinterpréter
+    // comme un tableau mal formé et à réinjecter des lignes vides à
+    // l'enregistrement/partage. Un .txt en text/plain n'est jamais traité de
+    // cette façon, et correspond de toute façon à l'usage réel documenté
+    // (le fichier Ginsoft est historiquement collé dans un .txt avant import
+    // METI, cf. section 2 du cahier des charges).
+    downloadTextFile('INVN_SURGELE_' + stamp + '.txt', ginsoftText, 'text/plain');
     let msg = '<p class="ok">Fichier d\'inventaire exporté : ' + nbLignes + ' article(s).</p>';
     if (overflow.length) {
       msg += '<p class="err">Attention : quantité supérieure à 99 999 pour ' + overflow.length + ' article(s) (EAN : ' + overflow.join(', ') + ') — vérifier ces lignes.</p>';
