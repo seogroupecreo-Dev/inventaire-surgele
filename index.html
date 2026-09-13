@@ -220,12 +220,13 @@
 <section id="screen-export" class="screen" hidden>
   <h1>📤 Export</h1>
   <div class="card">
-    <p class="help">Génère 2 fichiers téléchargés sur ce téléphone :</p>
-    <p class="help">1. Le fichier principal au format Ginsoft (à importer dans METI, comme le fichier du prestataire).<br>
-    2. S'il y a des articles non reconnus : un fichier de contrôle séparé (EAN, libellé saisi, quantité).</p>
+    <p class="help">Deux fichiers séparés, à télécharger l'un après l'autre (un bouton = un seul fichier = un seul geste — plus fiable sur iPhone, notamment depuis l'icône ajoutée à l'écran d'accueil).</p>
+    <p class="help" id="export-summary">—</p>
     <p class="help">Cette étape ne nécessite <strong>aucun réseau</strong> — vous pouvez exporter dès la fin du comptage, même encore dans le surgelé.</p>
     <div style="height:8px"></div>
-    <button class="primary" id="btn-export" style="width:100%">Exporter les fichiers</button>
+    <button class="primary" id="btn-export-main" style="width:100%">Exporter le fichier d'inventaire (Ginsoft)</button>
+    <div style="height:10px"></div>
+    <button class="secondary" id="btn-export-inconnus" style="width:100%" hidden>Exporter le fichier des EAN non reconnus</button>
     <div id="export-result" style="margin-top:12px"></div>
   </div>
   <div class="card">
@@ -403,6 +404,7 @@
     document.querySelectorAll('.screen').forEach((s) => { s.hidden = true; });
     document.getElementById(id).hidden = false;
     if (id === 'screen-session') renderSession();
+    if (id === 'screen-export') renderExportScreen();
     if (id === 'screen-scan') resumeScanIfNeeded();
     else pauseScan();
   }
@@ -428,7 +430,7 @@
    'sync-status','video','manual-ean-input','btn-manual-ean','fps-counter','btn-zoom-minus','btn-zoom-plus',
    'btn-torch','article-card','flag-unknown','qty-ean','qty-libelle','unknown-libelle-wrap','manual-libelle-input',
    'qty-input','qty-keypad','btn-qty-cancel','btn-qty-validate','sess-nb-lignes','sess-nb-articles','sess-nb-inconnus',
-   'session-tbody','session-empty','totals-tbody','btn-export','export-result','btn-new-session',
+   'session-tbody','session-empty','totals-tbody','btn-export-main','btn-export-inconnus','export-summary','export-result','btn-new-session',
    'badge-online','badge-articles','badge-lignes','topbar','bottom-nav'
   ].forEach((id) => els[id] = document.getElementById(id));
 
@@ -856,23 +858,50 @@
     return { ginsoftText, inconnusText, nbLignes: ginsoftLines.length, nbInconnus: inconnusRows.length - 1, overflow };
   }
 
-  els['btn-export'].addEventListener('click', async () => {
-    const { ginsoftText, inconnusText, nbLignes, nbInconnus, overflow } = await buildExports();
+  // Écran d'export : on affiche un résumé (nb de lignes / non reconnus) et on
+  // n'expose le bouton "EAN non reconnus" que s'il y a réellement quelque
+  // chose à exporter dans ce second fichier.
+  async function renderExportScreen() {
+    const { nbLignes, nbInconnus } = await buildExports();
+    els['export-summary'].textContent = nbLignes
+      ? nbLignes + ' article(s) au total' + (nbInconnus ? ', dont ' + nbInconnus + ' non reconnu(s).' : '.')
+      : 'Aucune ligne de comptage enregistrée pour le moment.';
+    els['btn-export-main'].disabled = !nbLignes;
+    els['btn-export-inconnus'].hidden = !nbInconnus;
+    els['export-result'].innerHTML = '';
+  }
+
+  // Deux boutons distincts plutôt qu'un seul déclenchant deux téléchargements
+  // d'affilée : sur iPhone (notamment depuis une icône ajoutée à l'écran
+  // d'accueil), un deuxième téléchargement lancé juste après le premier dans
+  // le même clic est souvent silencieusement ignoré par iOS (le "geste
+  // utilisateur" n'est valable que pour une seule action de sauvegarde). En
+  // séparant les deux exports sur deux boutons, chaque téléchargement part
+  // d'un tap explicite de l'utilisateur et se sauvegarde de façon fiable.
+  els['btn-export-main'].addEventListener('click', async () => {
+    const { ginsoftText, nbLignes, overflow } = await buildExports();
     if (!nbLignes) {
       els['export-result'].innerHTML = '<p class="err">Aucune ligne de comptage à exporter.</p>';
       return;
     }
     const stamp = formatStamp(new Date());
     downloadTextFile('INVN_SURGELE_' + stamp + '.csv', ginsoftText, 'text/csv');
-    let msg = '<p class="ok">Export terminé : ' + nbLignes + ' article(s) dans le fichier principal.</p>';
-    if (nbInconnus > 0) {
-      downloadTextFile('EAN_inconnus_' + stamp + '.csv', inconnusText, 'text/csv');
-      msg += '<p class="ok">' + nbInconnus + ' article(s) non reconnu(s) exporté(s) dans le fichier de contrôle séparé.</p>';
-    }
+    let msg = '<p class="ok">Fichier d\'inventaire exporté : ' + nbLignes + ' article(s).</p>';
     if (overflow.length) {
       msg += '<p class="err">Attention : quantité supérieure à 99 999 pour ' + overflow.length + ' article(s) (EAN : ' + overflow.join(', ') + ') — vérifier ces lignes.</p>';
     }
     els['export-result'].innerHTML = msg;
+  });
+
+  els['btn-export-inconnus'].addEventListener('click', async () => {
+    const { inconnusText, nbInconnus } = await buildExports();
+    if (!nbInconnus) {
+      els['export-result'].innerHTML = '<p class="err">Aucun EAN non reconnu à exporter.</p>';
+      return;
+    }
+    const stamp = formatStamp(new Date());
+    downloadTextFile('EAN_inconnus_' + stamp + '.csv', inconnusText, 'text/csv');
+    els['export-result'].innerHTML = '<p class="ok">Fichier des EAN non reconnus exporté : ' + nbInconnus + ' article(s).</p>';
   });
 
   els['btn-new-session'].addEventListener('click', async () => {
