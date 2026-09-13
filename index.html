@@ -674,10 +674,24 @@
     }
     els['qty-input'].value = '';
     showScreen('screen-quantity');
-    setTimeout(() => {
-      (article ? els['qty-input'] : els['manual-libelle-input']).focus();
-    }, 50);
+    // Focus immédiat et synchrone (pas de setTimeout) : sur mobile, l'ouverture
+    // automatique du clavier après un geste utilisateur (bouton "Valider" de
+    // la saisie manuelle d'EAN) ne fonctionne que si le focus() est appelé
+    // sans délai asynchrone entre le clic et l'appel. Objectif : ne jamais
+    // obliger l'utilisateur à cliquer sur le champ quantité en zone surgelée.
+    const toFocus = article ? els['qty-input'] : els['manual-libelle-input'];
+    toFocus.focus({ preventScroll: true });
+    if (typeof toFocus.select === 'function') toFocus.select();
   }
+
+  // Entrée / "Go" du clavier : enchaîne libellé manuel -> quantité -> validation,
+  // pour limiter au maximum les taps nécessaires en zone surgelée (gants, froid).
+  els['manual-libelle-input'].addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); els['qty-input'].focus(); els['qty-input'].select(); }
+  });
+  els['qty-input'].addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); els['btn-qty-validate'].click(); }
+  });
 
   els['btn-qty-cancel'].addEventListener('click', () => {
     pendingScan = null;
