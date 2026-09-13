@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Inventaire Surgelé — 123-Click</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="data:image/png;base64,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">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d3b66">
+<style>
+  :root{
+    --bg:#0d1b2a; --panel:#13293d; --panel2:#1b3a5c; --accent:#2ec4b6;
+    --accent2:#ff9f1c; --danger:#e63946; --text:#f1f6f9; --muted:#8aa1b4;
+    --border:#274b6d;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex; flex-direction:column; min-height:100vh;
+  }
+  .screen{flex:1; display:flex; flex-direction:column; padding:16px; gap:14px;}
+  .screen[hidden]{display:none;}
+  h1{font-size:1.25rem; margin:0 0 4px;}
+  h2{font-size:1.05rem; margin:0 0 8px; color:var(--muted); font-weight:600;}
+  p.help{color:var(--muted); font-size:0.9rem; margin:0;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px;}
+  label{display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px;}
+  input[type=password], input[type=text], input[type=number]{
+    width:100%; padding:14px; font-size:1.1rem; border-radius:10px;
+    border:1px solid var(--border); background:#0a1826; color:var(--text);
+  }
+  input:focus{outline:2px solid var(--accent);}
+  button{
+    font-size:1.05rem; padding:14px 18px; border-radius:12px; border:none;
+    cursor:pointer; font-weight:600; -webkit-tap-highlight-color:transparent;
+  }
+  button.primary{background:var(--accent); color:#00332e;}
+  button.secondary{background:var(--panel2); color:var(--text);}
+  button.warn{background:var(--accent2); color:#3a2200;}
+  button.danger{background:var(--danger); color:#3a0d10;}
+  button.ghost{background:transparent; color:var(--accent); border:1px solid var(--accent);}
+  button:disabled{opacity:0.45; cursor:not-allowed;}
+  button:active{transform:scale(0.98);}
+  .row{display:flex; gap:10px; flex-wrap:wrap;}
+  .row > *{flex:1;}
+  .topbar{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--border);
+    font-size:0.8rem; color:var(--muted); gap:8px; flex-wrap:wrap;
+  }
+  .topbar .status{display:flex; gap:14px; flex-wrap:wrap;}
+  .badge{background:var(--panel2); border-radius:999px; padding:4px 10px; font-size:0.75rem;}
+  .badge.on{color:var(--accent);}
+  .badge.off{color:var(--danger);}
+  .nav{display:flex; gap:8px; padding:10px 14px; background:var(--panel); border-top:1px solid var(--border);}
+  .nav button{flex:1; padding:12px 6px; font-size:0.85rem;}
+  .video-wrap{position:relative; width:100%; aspect-ratio:3/4; background:#000; border-radius:14px; overflow:hidden;}
+  video{width:100%; height:100%; object-fit:cover;}
+  .scan-frame{
+    position:absolute; left:15%; top:35%; width:70%; height:30%;
+    border:3px solid var(--accent); border-radius:10px; box-shadow:0 0 0 999px rgba(0,0,0,0.35);
+  }
+  .fps{position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.5); padding:3px 8px; border-radius:8px; font-size:0.7rem;}
+  .cam-controls{position:absolute; bottom:8px; left:0; right:0; display:flex; justify-content:center; gap:10px;}
+  .cam-controls button{padding:8px 14px; font-size:0.85rem; background:rgba(20,30,40,0.75); color:#fff; border:1px solid rgba(255,255,255,0.3);}
+  .article-card{border-left:5px solid var(--accent);}
+  .article-card.unknown{border-left-color:var(--accent2);}
+  .article-ean{color:var(--muted); font-size:0.85rem;}
+  .article-libelle{font-size:1.2rem; font-weight:700; margin:4px 0;}
+  .flag-unknown{display:inline-block; background:var(--accent2); color:#3a2200; font-size:0.7rem; padding:2px 8px; border-radius:999px; margin-bottom:6px;}
+  table{width:100%; border-collapse:collapse; font-size:0.9rem;}
+  th, td{text-align:left; padding:8px 6px; border-bottom:1px solid var(--border);}
+  th{color:var(--muted); font-weight:600; font-size:0.78rem; text-transform:uppercase;}
+  tr.unknown td{color:var(--accent2);}
+  .qty-pill{background:var(--panel2); border-radius:8px; padding:2px 8px; font-variant-numeric:tabular-nums;}
+  .list-scroll{max-height:50vh; overflow-y:auto;}
+  .center{text-align:center;}
+  .spinner{width:34px; height:34px; border:4px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .summary-line{display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border);}
+  .err{color:var(--danger); font-size:0.9rem;}
+  .ok{color:var(--accent); font-size:0.9rem;}
+  footer.small{color:var(--muted); font-size:0.72rem; text-align:center; padding:6px 0 2px;}
+</style>
+</head>
+<body>
+
+<!-- ========================= ÉCRAN CONNEXION ========================= -->
+<section id="screen-login" class="screen">
+  <h1>❄️ Inventaire Surgelé</h1>
+  <p class="help">123-Click / Groupe Créo — saisie de comptage hors-ligne</p>
+  <div class="card">
+    <label for="password-input">Mot de passe</label>
+    <input type="password" id="password-input" inputmode="text" autocomplete="off" placeholder="Mot de passe magasin">
+    <p id="login-error" class="err" hidden>Mot de passe incorrect.</p>
+    <div style="height:10px"></div>
+    <button class="primary" id="btn-login" style="width:100%">Accéder</button>
+  </div>
+</section>
+
+<!-- ========================= ÉCRAN SYNCHRONISATION ========================= -->
+<section id="screen-sync" class="screen" hidden>
+  <h1>📶 Base articles</h1>
+  <p class="help">À faire impérativement pendant que vous avez du réseau, <strong>avant</strong> d'entrer dans la zone surgelée.</p>
+  <div class="card">
+    <div class="summary-line"><span>Dernière synchro</span><strong id="sync-last">jamais</strong></div>
+    <div class="summary-line"><span>Articles chargés</span><strong id="sync-count">0</strong></div>
+    <div style="height:14px"></div>
+    <button class="primary" id="btn-sync" style="width:100%">Télécharger / mettre à jour la base</button>
+    <div id="sync-status" style="margin-top:12px"></div>
+  </div>
+  <button class="secondary" id="btn-sync-continue" style="width:100%">Continuer vers le scan →</button>
+</section>
+
+<!-- ========================= ÉCRAN SCAN ========================= -->
+<section id="screen-scan" class="screen" hidden>
+  <div class="video-wrap" id="video-wrap">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="scan-frame"></div>
+    <div class="fps" id="fps-counter">0 img/s</div>
+    <div class="cam-controls">
+      <button id="btn-zoom-minus">－</button>
+      <button id="btn-torch">🔦</button>
+      <button id="btn-zoom-plus">＋</button>
+    </div>
+  </div>
+  <div id="scan-hint" class="help center">Visez le code-barres dans le cadre…</div>
+  <div class="card">
+    <label for="manual-ean-input">Ou saisir l'EAN manuellement</label>
+    <div class="row">
+      <input type="text" id="manual-ean-input" inputmode="numeric" pattern="[0-9]*" placeholder="Ex. 3273680317004">
+      <button class="secondary" id="btn-manual-ean">Valider</button>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= ÉCRAN QUANTITÉ / ARTICLE ========================= -->
+<section id="screen-quantity" class="screen" hidden>
+  <div class="card article-card" id="article-card">
+    <span class="flag-unknown" id="flag-unknown" hidden>Article non reconnu</span>
+    <div class="article-ean" id="qty-ean">EAN —</div>
+    <div class="article-libelle" id="qty-libelle">—</div>
+    <div id="unknown-libelle-wrap" hidden>
+      <label for="manual-libelle-input">Libellé du produit (saisie manuelle)</label>
+      <input type="text" id="manual-libelle-input" placeholder="Ex. GLACE VANILLE 1L">
+    </div>
+  </div>
+  <div class="card">
+    <label for="qty-input">Quantité comptée (nombre d'unités)</label>
+    <input type="number" id="qty-input" inputmode="numeric" min="1" step="1" placeholder="0">
+    <div style="height:12px"></div>
+    <div class="row">
+      <button class="secondary" id="btn-qty-cancel">Annuler</button>
+      <button class="primary" id="btn-qty-validate">Valider la ligne</button>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= ÉCRAN SESSION (MES COMPTAGES) ========================= -->
+<section id="screen-session" class="screen" hidden>
+  <h1>📋 Mes comptages</h1>
+  <div class="card">
+    <div class="summary-line"><span>Lignes saisies</span><strong id="sess-nb-lignes">0</strong></div>
+    <div class="summary-line"><span>Articles distincts</span><strong id="sess-nb-articles">0</strong></div>
+    <div class="summary-line"><span>Dont non reconnus</span><strong id="sess-nb-inconnus">0</strong></div>
+  </div>
+  <div class="card">
+    <h2>Détail des lignes (les plus récentes en premier)</h2>
+    <div class="list-scroll">
+      <table>
+        <thead><tr><th>Article</th><th>Qté</th><th>Heure</th><th></th></tr></thead>
+        <tbody id="session-tbody"></tbody>
+      </table>
+      <p id="session-empty" class="help center" hidden>Aucune ligne pour l'instant.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Totaux par article (ce qui sera exporté)</h2>
+    <div class="list-scroll">
+      <table>
+        <thead><tr><th>Article</th><th>Total</th></tr></thead>
+        <tbody id="totals-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= ÉCRAN EXPORT ========================= -->
+<section id="screen-export" class="screen" hidden>
+  <h1>📤 Export</h1>
+  <div class="card">
+    <p class="help">Génère 2 fichiers téléchargés sur ce téléphone :</p>
+    <p class="help">1. Le fichier principal au format Ginsoft (à importer dans METI, comme le fichier du prestataire).<br>
+    2. S'il y a des articles non reconnus : un fichier de contrôle séparé (EAN, libellé saisi, quantité).</p>
+    <p class="help">Cette étape ne nécessite <strong>aucun réseau</strong> — vous pouvez exporter dès la fin du comptage, même encore dans le surgelé.</p>
+    <div style="height:8px"></div>
+    <button class="primary" id="btn-export" style="width:100%">Exporter les fichiers</button>
+    <div id="export-result" style="margin-top:12px"></div>
+  </div>
+  <div class="card">
+    <h2>Nouveau comptage</h2>
+    <p class="help">Vide toutes les lignes enregistrées sur ce téléphone. À faire uniquement après avoir bien récupéré les fichiers exportés.</p>
+    <button class="danger" id="btn-new-session" style="width:100%">Démarrer un nouveau comptage</button>
+  </div>
+</section>
+
+<!-- ========================= BARRE DU HAUT + NAV (hors écran login) ========================= -->
+<div class="topbar" id="topbar" hidden>
+  <div class="status">
+    <span class="badge" id="badge-online">…</span>
+    <span class="badge" id="badge-articles">0 articles</span>
+    <span class="badge" id="badge-lignes">0 ligne(s)</span>
+  </div>
+</div>
+<div class="nav" id="bottom-nav" hidden>
+  <button class="ghost" data-screen="screen-scan">Scanner</button>
+  <button class="ghost" data-screen="screen-session">Mes comptages</button>
+  <button class="ghost" data-screen="screen-export">Export</button>
+  <button class="ghost" data-screen="screen-sync">Base articles</button>
+</div>
+<footer class="small">Inventaire Surgelé · 123-Click / Groupe Créo</footer>
+
+<script>
+(function(){
+  'use strict';
+
+  // ============================================================
+  // CONFIGURATION
+  // ============================================================
+  const APP_PASSWORD = 'surgele2026'; // à changer ici si besoin
+  const SHEET_ID = '1jtxgWw8488lQWtHeYuReVv2ZlHh4MQXpTvJFZrq6egM';
+  const SHEET_NAME = 'Articles';
+  const SYNC_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(SHEET_NAME);
+
+  const DB_NAME = 'InventaireSurgeleDB';
+  const DB_VERSION = 1;
+  const STORE_ARTICLES = 'articles';
+  const STORE_LIGNES = 'lignes';
+  const STORE_META = 'meta';
+
+  // Format de sortie Ginsoft (voir cahier des charges) :
+  // "01" + 7 espaces + "001" + EAN (13, zéros à gauche) + quantité (5, zéros à gauche)
+  const RECORD_TYPE = '01';
+
+  // ============================================================
+  // INDEXEDDB — petite couche promesses
+  // ============================================================
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_ARTICLES)) db.createObjectStore(STORE_ARTICLES, { keyPath: 'ean' });
+        if (!db.objectStoreNames.contains(STORE_LIGNES)) db.createObjectStore(STORE_LIGNES, { keyPath: 'id', autoIncrement: true });
+        if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META, { keyPath: 'key' });
+      };
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+  async function dbGetAll(store) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function dbGet(store, key) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(store, 'readonly').objectStore(store).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function dbPut(store, value) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(store, 'readwrite');
+      const req = t.objectStore(store).put(value);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function dbPutAll(store, items) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(store, 'readwrite');
+      const os = t.objectStore(store);
+      items.forEach((it) => os.put(it));
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+  }
+  async function dbDelete(store, key) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(store, 'readwrite');
+      t.objectStore(store).delete(key);
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+  }
+  async function dbClear(store) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(store, 'readwrite');
+      t.objectStore(store).clear();
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+  }
+
+  // ============================================================
+  // UTILITAIRES
+  // ============================================================
+  function normalizeEAN(raw) {
+    if (!raw) return '';
+    return String(raw).replace(/[^0-9]/g, '');
+  }
+  function padDigits(value, len) {
+    let s = String(value).replace(/[^0-9]/g, '');
+    if (s.length > len) s = s.slice(-len);
+    return s.padStart(len, '0');
+  }
+  function formatStamp(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+  }
+  function csvEscape(v) {
+    v = String(v == null ? '' : v);
+    if (v.indexOf(';') !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) {
+      return '"' + v.replace(/"/g, '""') + '"';
+    }
+    return v;
+  }
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
+        } else field += c;
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\n' || c === '\r') {
+          if (c === '\r' && text[i + 1] === '\n') i++;
+          row.push(field); field = '';
+          rows.push(row); row = [];
+        } else field += c;
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows.filter((r) => !(r.length === 1 && r[0] === ''));
+  }
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach((s) => { s.hidden = true; });
+    document.getElementById(id).hidden = false;
+    if (id === 'screen-session') renderSession();
+    if (id === 'screen-scan') resumeScanIfNeeded();
+    else pauseScan();
+  }
+  function downloadTextFile(filename, text, mime) {
+    const blob = new Blob([text], { type: mime || 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  // ============================================================
+  // ÉTAT
+  // ============================================================
+  let pendingScan = null; // { ean, article|null }
+
+  // ============================================================
+  // CONNEXION
+  // ============================================================
+  const els = {};
+  ['password-input','login-error','btn-login','sync-last','sync-count','btn-sync','btn-sync-continue',
+   'sync-status','video','manual-ean-input','btn-manual-ean','fps-counter','btn-zoom-minus','btn-zoom-plus',
+   'btn-torch','article-card','flag-unknown','qty-ean','qty-libelle','unknown-libelle-wrap','manual-libelle-input',
+   'qty-input','btn-qty-cancel','btn-qty-validate','sess-nb-lignes','sess-nb-articles','sess-nb-inconnus',
+   'session-tbody','session-empty','totals-tbody','btn-export','export-result','btn-new-session',
+   'badge-online','badge-articles','badge-lignes','topbar','bottom-nav'
+  ].forEach((id) => els[id] = document.getElementById(id));
+
+  function checkPassword() {
+    const val = els['password-input'].value || '';
+    if (val === APP_PASSWORD) {
+      sessionStorage.setItem('authOk', '1');
+      els['login-error'].hidden = true;
+      afterLogin();
+    } else {
+      els['login-error'].hidden = false;
+    }
+  }
+  els['btn-login'].addEventListener('click', checkPassword);
+  els['password-input'].addEventListener('keydown', (e) => { if (e.key === 'Enter') checkPassword(); });
+
+  async function afterLogin() {
+    els['topbar'].hidden = false;
+    els['bottom-nav'].hidden = false;
+    await refreshBadges();
+    const nb = await dbGet(STORE_META, 'nbArticles');
+    if (!nb || !nb.value) {
+      showScreen('screen-sync');
+    } else {
+      showScreen('screen-scan');
+    }
+  }
+
+  // ============================================================
+  // SYNCHRONISATION BASE ARTICLES
+  // ============================================================
+  async function refreshSyncInfo() {
+    const last = await dbGet(STORE_META, 'lastSync');
+    const nb = await dbGet(STORE_META, 'nbArticles');
+    els['sync-last'].textContent = last && last.value ? new Date(last.value).toLocaleString('fr-FR') : 'jamais';
+    els['sync-count'].textContent = nb && nb.value ? nb.value : 0;
+  }
+  async function refreshBadges() {
+    const nb = await dbGet(STORE_META, 'nbArticles');
+    const lignes = await dbGetAll(STORE_LIGNES);
+    els['badge-articles'].textContent = (nb && nb.value ? nb.value : 0) + ' articles';
+    els['badge-lignes'].textContent = lignes.length + ' ligne(s)';
+    const online = navigator.onLine;
+    els['badge-online'].textContent = online ? 'En ligne' : 'Hors ligne';
+    els['badge-online'].className = 'badge ' + (online ? 'on' : 'off');
+  }
+  window.addEventListener('online', refreshBadges);
+  window.addEventListener('offline', refreshBadges);
+
+  async function syncArticles() {
+    els['btn-sync'].disabled = true;
+    els['sync-status'].innerHTML = '<div class="spinner"></div><p class="help center">Téléchargement de la base articles…</p>';
+    try {
+      const resp = await fetch(SYNC_URL, { cache: 'no-store' });
+      if (!resp.ok) throw new Error('Erreur réseau (HTTP ' + resp.status + ')');
+      const text = await resp.text();
+      const rows = parseCSV(text);
+      if (!rows.length) throw new Error('Fichier vide ou illisible.');
+      const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+      const idxEAN = header.findIndex((h) => h.indexOf('ean') !== -1);
+      const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
+      const idxLib = header.findIndex((h) => h.indexOf('libell') !== -1);
+      if (idxEAN === -1 || idxLib === -1) throw new Error('Colonnes EAN / Libellé introuvables dans le Google Sheet.');
+      const items = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const ean = normalizeEAN(r[idxEAN]);
+        const libelle = (r[idxLib] || '').trim();
+        const codeArticle = idxCode !== -1 ? (r[idxCode] || '').trim() : '';
+        if (ean && libelle) items.push({ ean, codeArticle, libelle });
+      }
+      if (!items.length) throw new Error('Aucun article valide trouvé.');
+      await dbClear(STORE_ARTICLES);
+      await dbPutAll(STORE_ARTICLES, items);
+      await dbPut(STORE_META, { key: 'lastSync', value: new Date().toISOString() });
+      await dbPut(STORE_META, { key: 'nbArticles', value: items.length });
+      els['sync-status'].innerHTML = '<p class="ok">' + items.length + ' articles chargés avec succès.</p>';
+      await refreshSyncInfo();
+      await refreshBadges();
+    } catch (e) {
+      els['sync-status'].innerHTML = '<p class="err">Échec de la synchronisation : ' + (e.message || e) + '</p>';
+    } finally {
+      els['btn-sync'].disabled = false;
+    }
+  }
+  els['btn-sync'].addEventListener('click', syncArticles);
+  els['btn-sync-continue'].addEventListener('click', () => showScreen('screen-scan'));
+
+  // ============================================================
+  // NAVIGATION BAS DE PAGE
+  // ============================================================
+  document.querySelectorAll('#bottom-nav button').forEach((btn) => {
+    btn.addEventListener('click', () => showScreen(btn.getAttribute('data-screen')));
+  });
+
+  // ============================================================
+  // SCAN CAMÉRA (zxing-wasm)
+  // ============================================================
+  let zxingMod = null;
+  let videoStream = null;
+  let currentTrack = null;
+  let scanning = false;
+  let scanTimer = null;
+  let frameCount = 0, lastFpsTime = performance.now();
+  let torchOn = false;
+  let currentZoom = 1.5;
+
+  async function loadZxing() {
+    if (zxingMod) return zxingMod;
+    try {
+      zxingMod = await import('https://unpkg.com/zxing-wasm@1.3.4/dist/es/reader/index.js');
+    } catch (e) {
+      zxingMod = await import('https://cdn.jsdelivr.net/npm/zxing-wasm@1.3.4/dist/es/reader/index.js');
+    }
+    return zxingMod;
+  }
+
+  async function startCamera() {
+    if (videoStream) return;
+    try {
+      videoStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      els['video'].srcObject = videoStream;
+      await els['video'].play();
+      currentTrack = videoStream.getVideoTracks()[0];
+      try { await currentTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }] }); } catch (e) {}
+      applyZoom(currentZoom);
+      loadZxing().catch(() => {}); // préchauffe le moteur en arrière-plan
+    } catch (e) {
+      els['scan-hint'] && (document.getElementById('scan-hint').textContent = 'Caméra indisponible : ' + (e.message || e) + ' — utilisez la saisie manuelle ci-dessous.');
+    }
+  }
+  function stopCamera() {
+    if (videoStream) {
+      videoStream.getTracks().forEach((t) => t.stop());
+      videoStream = null; currentTrack = null;
+    }
+  }
+  function applyZoom(z) {
+    if (!currentTrack || !currentTrack.getCapabilities) return;
+    const caps = currentTrack.getCapabilities();
+    if (caps.zoom) {
+      const zz = Math.min(Math.max(z, caps.min || 1), caps.max || z);
+      currentTrack.applyConstraints({ advanced: [{ zoom: zz }] }).catch(() => {});
+    }
+  }
+  els['btn-zoom-plus'].addEventListener('click', () => { currentZoom += 0.5; applyZoom(currentZoom); });
+  els['btn-zoom-minus'].addEventListener('click', () => { currentZoom = Math.max(1, currentZoom - 0.5); applyZoom(currentZoom); });
+  els['btn-torch'].addEventListener('click', () => {
+    if (!currentTrack || !currentTrack.getCapabilities) return;
+    const caps = currentTrack.getCapabilities();
+    if (!caps.torch) return;
+    torchOn = !torchOn;
+    currentTrack.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(() => {});
+  });
+  document.getElementById('video-wrap').addEventListener('click', () => {
+    if (!currentTrack || !currentTrack.getCapabilities) return;
+    const caps = currentTrack.getCapabilities();
+    if (caps.focusMode) {
+      currentTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    }
+  });
+
+  async function scanTick() {
+    if (!scanning) return;
+    const now = performance.now();
+    frameCount++;
+    if (now - lastFpsTime > 1000) {
+      els['fps-counter'].textContent = frameCount + ' img/s';
+      frameCount = 0; lastFpsTime = now;
+    }
+    try {
+      const vw = els['video'].videoWidth, vh = els['video'].videoHeight;
+      if (vw && vh) {
+        const cropW = Math.floor(vw * 0.7), cropH = Math.floor(vh * 0.3);
+        const sx = Math.floor((vw - cropW) / 2), sy = Math.floor((vh - cropH) / 2);
+        const canvas = scanTick._canvas || (scanTick._canvas = document.createElement('canvas'));
+        canvas.width = cropW; canvas.height = cropH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(els['video'], sx, sy, cropW, cropH, 0, 0, cropW, cropH);
+        const imageData = ctx.getImageData(0, 0, cropW, cropH);
+        const zx = await loadZxing();
+        const results = await zx.readBarcodesFromImageData(imageData, {
+          tryHarder: true, formats: ['EAN13', 'EAN8', 'UPCA'], maxNumberOfSymbols: 1
+        });
+        if (results && results.length && results[0].text) {
+          onBarcodeDetected(results[0].text);
+          return;
+        }
+      }
+    } catch (e) { /* on ignore les erreurs de frame isolées et on continue */ }
+    scanTimer = setTimeout(scanTick, 120);
+  }
+  function resumeScanIfNeeded() {
+    startCamera();
+    if (!scanning) {
+      scanning = true;
+      document.getElementById('scan-hint').textContent = 'Visez le code-barres dans le cadre…';
+      scanTimer = setTimeout(scanTick, 50);
+    }
+  }
+  function pauseScan() {
+    scanning = false;
+    if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+  }
+
+  function onBarcodeDetected(rawText) {
+    pauseScan();
+    const ean = normalizeEAN(rawText);
+    handleScannedEAN(ean);
+  }
+  els['btn-manual-ean'].addEventListener('click', () => {
+    const ean = normalizeEAN(els['manual-ean-input'].value);
+    if (!ean) return;
+    els['manual-ean-input'].value = '';
+    pauseScan();
+    handleScannedEAN(ean);
+  });
+
+  // ============================================================
+  // ÉCRAN QUANTITÉ (article reconnu ou non)
+  // ============================================================
+  async function handleScannedEAN(ean) {
+    const article = await dbGet(STORE_ARTICLES, ean);
+    pendingScan = { ean, article: article || null };
+    els['qty-ean'].textContent = 'EAN ' + ean;
+    if (article) {
+      els['flag-unknown'].hidden = true;
+      els['article-card'].classList.remove('unknown');
+      els['qty-libelle'].textContent = article.libelle;
+      els['unknown-libelle-wrap'].hidden = true;
+      els['manual-libelle-input'].value = '';
+    } else {
+      els['flag-unknown'].hidden = false;
+      els['article-card'].classList.add('unknown');
+      els['qty-libelle'].textContent = 'Article non reconnu';
+      els['unknown-libelle-wrap'].hidden = false;
+      els['manual-libelle-input'].value = '';
+    }
+    els['qty-input'].value = '';
+    showScreen('screen-quantity');
+    setTimeout(() => {
+      (article ? els['qty-input'] : els['manual-libelle-input']).focus();
+    }, 50);
+  }
+
+  els['btn-qty-cancel'].addEventListener('click', () => {
+    pendingScan = null;
+    showScreen('screen-scan');
+  });
+
+  els['btn-qty-validate'].addEventListener('click', async () => {
+    if (!pendingScan) return;
+    const qty = parseInt(els['qty-input'].value, 10);
+    if (!qty || qty < 1) { els['qty-input'].focus(); return; }
+    let libelle, reconnu;
+    if (pendingScan.article) {
+      libelle = pendingScan.article.libelle;
+      reconnu = true;
+    } else {
+      libelle = (els['manual-libelle-input'].value || '').trim();
+      if (!libelle) { els['manual-libelle-input'].focus(); return; }
+      reconnu = false;
+    }
+    await dbPut(STORE_LIGNES, { ean: pendingScan.ean, libelle, quantite: qty, reconnu, ts: new Date().toISOString() });
+    pendingScan = null;
+    await refreshBadges();
+    showScreen('screen-scan');
+  });
+
+  // ============================================================
+  // ÉCRAN SESSION (MES COMPTAGES)
+  // ============================================================
+  async function renderSession() {
+    const lignes = await dbGetAll(STORE_LIGNES);
+    lignes.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    els['sess-nb-lignes'].textContent = lignes.length;
+    const byEan = {};
+    let nbInconnus = 0;
+    lignes.forEach((l) => {
+      if (!byEan[l.ean]) { byEan[l.ean] = { libelle: l.libelle, qty: 0, reconnu: l.reconnu }; }
+      byEan[l.ean].qty += Number(l.quantite) || 0;
+      if (l.reconnu) byEan[l.ean].libelle = l.libelle;
+    });
+    Object.keys(byEan).forEach((ean) => { if (!byEan[ean].reconnu) nbInconnus++; });
+    els['sess-nb-articles'].textContent = Object.keys(byEan).length;
+    els['sess-nb-inconnus'].textContent = nbInconnus;
+
+    els['session-tbody'].innerHTML = '';
+    els['session-empty'].hidden = lignes.length > 0;
+    lignes.forEach((l) => {
+      const tr = document.createElement('tr');
+      if (!l.reconnu) tr.className = 'unknown';
+      const heure = new Date(l.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      tr.innerHTML = '<td>' + escapeHtml(l.libelle) + '<br><span class="article-ean">' + l.ean + '</span></td>' +
+        '<td><span class="qty-pill">' + l.quantite + '</span></td>' +
+        '<td>' + heure + '</td>' +
+        '<td><button class="ghost" data-del="' + l.id + '" style="padding:6px 10px;font-size:0.8rem;">Suppr.</button></td>';
+      els['session-tbody'].appendChild(tr);
+    });
+    els['session-tbody'].querySelectorAll('button[data-del]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        await dbDelete(STORE_LIGNES, Number(btn.getAttribute('data-del')));
+        await refreshBadges();
+        renderSession();
+      });
+    });
+
+    els['totals-tbody'].innerHTML = '';
+    Object.keys(byEan).sort((a, b) => byEan[a].libelle.localeCompare(byEan[b].libelle)).forEach((ean) => {
+      const info = byEan[ean];
+      const tr = document.createElement('tr');
+      if (!info.reconnu) tr.className = 'unknown';
+      tr.innerHTML = '<td>' + escapeHtml(info.libelle) + '<br><span class="article-ean">' + ean + '</span></td>' +
+        '<td><span class="qty-pill">' + info.qty + '</span></td>';
+      els['totals-tbody'].appendChild(tr);
+    });
+  }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  // ============================================================
+  // EXPORT
+  // ============================================================
+  function encodeGinsoftLine(ean, qty) {
+    const spacer = '       '; // 7 espaces, cf. cahier des charges
+    const prefix = '001';
+    return RECORD_TYPE + spacer + prefix + padDigits(ean, 13) + padDigits(qty, 5);
+  }
+
+  async function buildExports() {
+    const lignes = await dbGetAll(STORE_LIGNES);
+    const byEan = {};
+    lignes.forEach((l) => {
+      if (!byEan[l.ean]) byEan[l.ean] = { qty: 0, reconnu: false, libelle: l.libelle };
+      byEan[l.ean].qty += Number(l.quantite) || 0;
+      if (l.reconnu) { byEan[l.ean].reconnu = true; byEan[l.ean].libelle = l.libelle; }
+    });
+    const ginsoftLines = [];
+    const inconnusRows = [['EAN', 'Libelle saisi', 'Quantite']];
+    let overflow = [];
+    Object.keys(byEan).forEach((ean) => {
+      const info = byEan[ean];
+      if (info.qty > 99999) overflow.push(ean);
+      ginsoftLines.push(encodeGinsoftLine(ean, info.qty));
+      if (!info.reconnu) inconnusRows.push([ean, info.libelle, String(info.qty)]);
+    });
+    const ginsoftText = ginsoftLines.length ? ginsoftLines.join('\r\n') + '\r\n' : '';
+    const inconnusText = inconnusRows.map((r) => r.map(csvEscape).join(';')).join('\r\n') + '\r\n';
+    return { ginsoftText, inconnusText, nbLignes: ginsoftLines.length, nbInconnus: inconnusRows.length - 1, overflow };
+  }
+
+  els['btn-export'].addEventListener('click', async () => {
+    const { ginsoftText, inconnusText, nbLignes, nbInconnus, overflow } = await buildExports();
+    if (!nbLignes) {
+      els['export-result'].innerHTML = '<p class="err">Aucune ligne de comptage à exporter.</p>';
+      return;
+    }
+    const stamp = formatStamp(new Date());
+    downloadTextFile('INVN_SURGELE_' + stamp + '.csv', ginsoftText, 'text/csv');
+    let msg = '<p class="ok">Export terminé : ' + nbLignes + ' article(s) dans le fichier principal.</p>';
+    if (nbInconnus > 0) {
+      downloadTextFile('EAN_inconnus_' + stamp + '.csv', inconnusText, 'text/csv');
+      msg += '<p class="ok">' + nbInconnus + ' article(s) non reconnu(s) exporté(s) dans le fichier de contrôle séparé.</p>';
+    }
+    if (overflow.length) {
+      msg += '<p class="err">Attention : quantité supérieure à 99 999 pour ' + overflow.length + ' article(s) (EAN : ' + overflow.join(', ') + ') — vérifier ces lignes.</p>';
+    }
+    els['export-result'].innerHTML = msg;
+  });
+
+  els['btn-new-session'].addEventListener('click', async () => {
+    if (!confirm('Vider toutes les lignes de comptage enregistrées sur ce téléphone ? Cette action est irréversible.')) return;
+    await dbClear(STORE_LIGNES);
+    await refreshBadges();
+    els['export-result'].innerHTML = '<p class="help">Session vidée, prêt pour un nouveau comptage.</p>';
+    showScreen('screen-scan');
+  });
+
+  // ============================================================
+  // DÉMARRAGE
+  // ============================================================
+  async function boot() {
+    await refreshSyncInfo();
+    await refreshBadges();
+    if (sessionStorage.getItem('authOk') === '1') {
+      afterLogin();
+    }
+  }
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+    });
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
