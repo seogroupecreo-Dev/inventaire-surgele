@@ -289,15 +289,26 @@
       req.onerror = () => reject(req.error);
     });
   }
-  async function dbPutAll(store, items) {
+  async function dbPutAll(store, items, onProgress) {
+    // Écrit par lots (plutôt qu'une seule transaction géante) : avec une base
+    // articles qui peut contenir plusieurs dizaines de milliers de lignes,
+    // une transaction unique risque d'être abandonnée par le navigateur
+    // (timeout) sur un téléphone. Des lots de 2000 gardent chaque
+    // transaction courte tout en restant rapides au total.
+    const CHUNK_SIZE = 2000;
     const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const t = db.transaction(store, 'readwrite');
-      const os = t.objectStore(store);
-      items.forEach((it) => os.put(it));
-      t.oncomplete = () => resolve();
-      t.onerror = () => reject(t.error);
-    });
+    for (let start = 0; start < items.length; start += CHUNK_SIZE) {
+      const chunk = items.slice(start, start + CHUNK_SIZE);
+      await new Promise((resolve, reject) => {
+        const t = db.transaction(store, 'readwrite');
+        const os = t.objectStore(store);
+        chunk.forEach((it) => os.put(it));
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('Transaction IndexedDB annulée'));
+      });
+      if (onProgress) onProgress(Math.min(start + CHUNK_SIZE, items.length), items.length);
+    }
   }
   async function dbDelete(store, key) {
     const db = await openDB();
@@ -453,23 +464,50 @@
       if (!rows.length) throw new Error('Fichier vide ou illisible.');
       const header = rows[0].map((h) => (h || '').trim().toLowerCase());
       const idxEAN = header.findIndex((h) => h.indexOf('ean') !== -1);
-      const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
-      const idxLib = header.findIndex((h) => h.indexOf('libell') !== -1);
+      let idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
+      // Certaines versions du fichier ont DEUX colonnes contenant "libell"
+      // (ex. une colonne "Libellé" qui contient en réalité un code article,
+      // et une colonne "Libellé article" qui contient le vrai nom du
+      // produit). Dans ce cas on privilégie celle dont l'en-tête précise
+      // "article" comme étant le vrai libellé, et on utilise l'autre comme
+      // code article si aucune colonne "code" n'a été trouvée par ailleurs.
+      const libellIdxs = [];
+      header.forEach((h, i) => { if (h.indexOf('libell') !== -1) libellIdxs.push(i); });
+      let idxLib = -1;
+      if (libellIdxs.length === 1) {
+        idxLib = libellIdxs[0];
+      } else if (libellIdxs.length > 1) {
+        const withArticle = libellIdxs.find((i) => header[i].indexOf('article') !== -1);
+        idxLib = withArticle !== undefined ? withArticle : libellIdxs[0];
+        if (idxCode === -1) {
+          const other = libellIdxs.find((i) => i !== idxLib);
+          if (other !== undefined) idxCode = other;
+        }
+      }
       if (idxEAN === -1 || idxLib === -1) throw new Error('Colonnes EAN / Libellé introuvables dans le Google Sheet.');
-      const items = [];
+      // Le Google Sheet peut contenir plusieurs lignes pour un même EAN
+      // (doublons d'import, historique, etc.) : on ne garde qu'une entrée
+      // par EAN (la dernière rencontrée) pour ne pas écrire inutilement
+      // 3 à 4 fois plus de lignes que d'articles réels dans IndexedDB.
+      const byEAN = new Map();
+      let totalRowsLues = 0;
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
         const ean = normalizeEAN(r[idxEAN]);
         const libelle = (r[idxLib] || '').trim();
         const codeArticle = idxCode !== -1 ? (r[idxCode] || '').trim() : '';
-        if (ean && libelle) items.push({ ean, codeArticle, libelle });
+        if (ean && libelle) { byEAN.set(ean, { ean, codeArticle, libelle }); totalRowsLues++; }
       }
+      const items = Array.from(byEAN.values());
       if (!items.length) throw new Error('Aucun article valide trouvé.');
       await dbClear(STORE_ARTICLES);
-      await dbPutAll(STORE_ARTICLES, items);
+      await dbPutAll(STORE_ARTICLES, items, (done, total) => {
+        els['sync-status'].innerHTML = '<div class="spinner"></div><p class="help center">Enregistrement des articles… ' + done + ' / ' + total + '</p>';
+      });
       await dbPut(STORE_META, { key: 'lastSync', value: new Date().toISOString() });
       await dbPut(STORE_META, { key: 'nbArticles', value: items.length });
-      els['sync-status'].innerHTML = '<p class="ok">' + items.length + ' articles chargés avec succès.</p>';
+      els['sync-status'].innerHTML = '<p class="ok">' + items.length + ' articles chargés avec succès'
+        + (totalRowsLues > items.length ? ' (' + totalRowsLues + ' lignes lues dans le fichier, doublons EAN fusionnés)' : '') + '.</p>';
       await refreshSyncInfo();
       await refreshBadges();
     } catch (e) {
