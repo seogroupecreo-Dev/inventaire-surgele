@@ -87,6 +87,17 @@
   .err{color:var(--danger); font-size:0.9rem;}
   .ok{color:var(--accent); font-size:0.9rem;}
   footer.small{color:var(--muted); font-size:0.72rem; text-align:center; padding:6px 0 2px;}
+  #qty-input[readonly]{caret-color:transparent; font-size:1.6rem; font-weight:700; text-align:center; letter-spacing:2px;}
+  .keypad{display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:12px;}
+  .keypad button{
+    height:58px; font-size:1.4rem; font-weight:700; padding:0; border-radius:12px;
+    background:var(--panel2); color:var(--text); border:none;
+  }
+  .keypad button.key-back, .keypad button.key-clear{font-size:1rem;}
+  .keypad button.key-back{color:var(--accent2); border:1px solid var(--accent2); background:transparent;}
+  .keypad button.key-clear{color:var(--danger); border:1px solid var(--danger); background:transparent;}
+  .keypad button:active{background:var(--accent); color:#00332e;}
+  .keypad button.key-back:active, .keypad button.key-clear:active{background:rgba(255,255,255,0.08);}
 </style>
 </head>
 <body>
@@ -153,7 +164,21 @@
   </div>
   <div class="card">
     <label for="qty-input">Quantité comptée (nombre d'unités)</label>
-    <input type="number" id="qty-input" inputmode="numeric" min="1" step="1" placeholder="0">
+    <input type="number" id="qty-input" inputmode="none" min="1" step="1" placeholder="0" readonly>
+    <div class="keypad" id="qty-keypad">
+      <button type="button" data-digit="1">1</button>
+      <button type="button" data-digit="2">2</button>
+      <button type="button" data-digit="3">3</button>
+      <button type="button" data-digit="4">4</button>
+      <button type="button" data-digit="5">5</button>
+      <button type="button" data-digit="6">6</button>
+      <button type="button" data-digit="7">7</button>
+      <button type="button" data-digit="8">8</button>
+      <button type="button" data-digit="9">9</button>
+      <button type="button" class="key-clear" id="btn-qty-clear">C</button>
+      <button type="button" data-digit="0">0</button>
+      <button type="button" class="key-back" id="btn-qty-back">⌫</button>
+    </div>
     <div style="height:12px"></div>
     <div class="row">
       <button class="secondary" id="btn-qty-cancel">Annuler</button>
@@ -402,7 +427,7 @@
   ['password-input','login-error','btn-login','sync-last','sync-count','btn-sync','btn-sync-continue',
    'sync-status','video','manual-ean-input','btn-manual-ean','fps-counter','btn-zoom-minus','btn-zoom-plus',
    'btn-torch','article-card','flag-unknown','qty-ean','qty-libelle','unknown-libelle-wrap','manual-libelle-input',
-   'qty-input','btn-qty-cancel','btn-qty-validate','sess-nb-lignes','sess-nb-articles','sess-nb-inconnus',
+   'qty-input','qty-keypad','btn-qty-cancel','btn-qty-validate','sess-nb-lignes','sess-nb-articles','sess-nb-inconnus',
    'session-tbody','session-empty','totals-tbody','btn-export','export-result','btn-new-session',
    'badge-online','badge-articles','badge-lignes','topbar','bottom-nav'
   ].forEach((id) => els[id] = document.getElementById(id));
@@ -678,19 +703,50 @@
     // automatique du clavier après un geste utilisateur (bouton "Valider" de
     // la saisie manuelle d'EAN) ne fonctionne que si le focus() est appelé
     // sans délai asynchrone entre le clic et l'appel. Objectif : ne jamais
-    // obliger l'utilisateur à cliquer sur le champ quantité en zone surgelée.
+    // obliger l'utilisateur à cliquer sur un champ en zone surgelée.
+    // Le champ quantité utilise désormais le clavier numérique intégré (pavé
+    // ci-dessous) plutôt que le clavier natif du téléphone : il est en lecture
+    // seule (readonly) et ne reçoit donc jamais le clavier natif ; le focus()
+    // ici ne sert qu'à le mettre en surbrillance visuelle.
     const toFocus = article ? els['qty-input'] : els['manual-libelle-input'];
     toFocus.focus({ preventScroll: true });
-    if (typeof toFocus.select === 'function') toFocus.select();
+    if (toFocus === els['manual-libelle-input']) toFocus.select();
   }
 
   // Entrée / "Go" du clavier : enchaîne libellé manuel -> quantité -> validation,
   // pour limiter au maximum les taps nécessaires en zone surgelée (gants, froid).
   els['manual-libelle-input'].addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); els['qty-input'].focus(); els['qty-input'].select(); }
+    if (e.key === 'Enter') { e.preventDefault(); els['qty-input'].focus(); }
   });
   els['qty-input'].addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); els['btn-qty-validate'].click(); }
+  });
+
+  // Pavé numérique intégré pour la quantité : remplace le clavier natif du
+  // téléphone (fiabilité en zone surgelée — gants, écran mouillé/givré — et
+  // fonctionne aussi bien après un scan caméra qu'après une saisie manuelle
+  // d'EAN, contrairement au clavier natif qui ne s'ouvre pas automatiquement
+  // après un scan caméra). Limite à 5 chiffres = limite du champ quantité du
+  // fichier Ginsoft (99 999 max, cf. cahier des charges section 3).
+  function qtyAppendDigit(d) {
+    let cur = els['qty-input'].value || '';
+    if (cur === '0') cur = '';
+    const next = cur + d;
+    if (next.length > 5) return;
+    els['qty-input'].value = next;
+  }
+  function qtyBackspace() {
+    els['qty-input'].value = (els['qty-input'].value || '').slice(0, -1);
+  }
+  function qtyClear() {
+    els['qty-input'].value = '';
+  }
+  els['qty-keypad'].addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.digit !== undefined) qtyAppendDigit(btn.dataset.digit);
+    else if (btn.id === 'btn-qty-back') qtyBackspace();
+    else if (btn.id === 'btn-qty-clear') qtyClear();
   });
 
   els['btn-qty-cancel'].addEventListener('click', () => {
