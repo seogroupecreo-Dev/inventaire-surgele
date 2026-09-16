@@ -593,7 +593,13 @@
       els['video'].srcObject = videoStream;
       await els['video'].play();
       currentTrack = videoStream.getVideoTracks()[0];
-      try { await currentTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }] }); } catch (e) {}
+      // Appliquées séparément (plutôt qu'un seul appel groupé avec les deux
+      // contraintes dans le même tableau "advanced") : certains navigateurs
+      // Android n'honorent que la première contrainte d'un tableau advanced
+      // groupé, ce qui pouvait faire échouer silencieusement la mise au point
+      // continue sur ces téléphones.
+      try { await currentTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+      try { await currentTrack.applyConstraints({ advanced: [{ exposureMode: 'continuous' }] }); } catch (e) {}
       applyZoom(currentZoom);
       loadZxing().catch(() => {}); // préchauffe le moteur en arrière-plan
     } catch (e) {
@@ -642,13 +648,55 @@
     try {
       const vw = els['video'].videoWidth, vh = els['video'].videoHeight;
       if (vw && vh) {
-        const cropW = Math.floor(vw * 0.7), cropH = Math.floor(vh * 0.3);
-        const sx = Math.floor((vw - cropW) / 2), sy = Math.floor((vh - cropH) / 2);
+        // La zone décodée doit correspondre EXACTEMENT à ce que l'utilisateur
+        // voit dans le cadre de visée (.scan-frame), pas à un simple
+        // pourcentage du flux caméra brut. La vidéo est affichée en
+        // object-fit:cover dans une boîte au format 3:4 (.video-wrap) : si la
+        // caméra renvoie un flux dans un autre format — très fréquent sur
+        // Android, où la résolution/le ratio "ideal" demandés ne sont pas
+        // toujours respectés par le pilote de caméra, contrairement à iOS —
+        // une partie du flux brut est en réalité invisible à l'écran (rognée
+        // par le CSS). Sans cette correspondance, l'appli pouvait essayer de
+        // décoder une zone que l'utilisateur ne voit même pas, d'où des
+        // lectures qui n'accrochaient pas alors que le code semblait bien
+        // cadré à l'écran (constaté spécifiquement sur Android — cf. journal
+        // d'avancement du 16/09/2026).
+        const wrapEl = document.getElementById('video-wrap');
+        const wrapRect = wrapEl && wrapEl.getBoundingClientRect ? wrapEl.getBoundingClientRect() : null;
+        const dw = wrapRect ? wrapRect.width : els['video'].clientWidth;
+        const dh = wrapRect ? wrapRect.height : els['video'].clientHeight;
+        let sx, sy, cropW, cropH;
+        if (dw && dh) {
+          const scale = Math.max(dw / vw, dh / vh); // équivalent du object-fit:cover
+          const offX = (vw * scale - dw) / 2, offY = (vh * scale - dh) / 2;
+          // Cadre .scan-frame : left 15%, top 35%, width 70%, height 30% de la
+          // boîte affichée — garder ces valeurs synchronisées avec la règle CSS.
+          const gx = 0.15 * dw, gy = 0.35 * dh, gw = 0.70 * dw, gh = 0.30 * dh;
+          sx = Math.max(0, Math.floor((gx + offX) / scale));
+          sy = Math.max(0, Math.floor((gy + offY) / scale));
+          cropW = Math.min(vw - sx, Math.floor(gw / scale));
+          cropH = Math.min(vh - sy, Math.floor(gh / scale));
+        } else {
+          // Repli si la mise en page n'est pas encore disponible (cas rare)
+          cropW = Math.floor(vw * 0.7); cropH = Math.floor(vh * 0.3);
+          sx = Math.floor((vw - cropW) / 2); sy = Math.floor((vh - cropH) / 2);
+        }
+        // Certains Android renvoient une résolution native très élevée (parfois
+        // au-delà de la Full HD demandée en "ideal") : on plafonne la largeur
+        // réellement décodée pour garder un décodage rapide et fluide, sans
+        // perte de fiabilité de lecture sur un code-barres (qui n'a pas besoin
+        // d'une définition supérieure à ça).
+        const MAX_DECODE_W = 1000;
+        let outW = cropW, outH = cropH;
+        if (outW > MAX_DECODE_W) {
+          const s = MAX_DECODE_W / outW;
+          outW = MAX_DECODE_W; outH = Math.floor(cropH * s);
+        }
         const canvas = scanTick._canvas || (scanTick._canvas = document.createElement('canvas'));
-        canvas.width = cropW; canvas.height = cropH;
+        canvas.width = outW; canvas.height = outH;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(els['video'], sx, sy, cropW, cropH, 0, 0, cropW, cropH);
-        const imageData = ctx.getImageData(0, 0, cropW, cropH);
+        ctx.drawImage(els['video'], sx, sy, cropW, cropH, 0, 0, outW, outH);
+        const imageData = ctx.getImageData(0, 0, outW, outH);
         const zx = await loadZxing();
         const results = await zx.readBarcodesFromImageData(imageData, {
           tryHarder: true, formats: ['EAN13', 'EAN8', 'UPCA'], maxNumberOfSymbols: 1
