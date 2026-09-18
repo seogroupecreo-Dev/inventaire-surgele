@@ -104,6 +104,26 @@
   .keypad button.key-clear{color:var(--danger); border:1px solid var(--danger); background:transparent;}
   .keypad button:active{background:var(--accent); color:#ffffff;}
   .keypad button.key-back:active, .keypad button.key-clear:active{background:rgba(255,255,255,0.08);}
+
+  /* ---- Mode "Réception marchandise" ---- */
+  .mode-btn{width:100%; padding:28px 18px; font-size:1.2rem; text-align:left; display:flex; align-items:center; gap:14px;}
+  .mode-btn .emoji{font-size:1.8rem;}
+  .statut-badge{display:inline-block; font-size:0.72rem; padding:3px 10px; border-radius:999px; margin-bottom:8px; font-weight:700;}
+  .statut-badge.attendu{background:var(--accent); color:#ffffff;}
+  .statut-badge.surplus{background:var(--accent2); color:#3a2200;}
+  .statut-badge.inconnu{background:var(--danger); color:#ffffff;}
+  .adresse-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:12px;}
+  .adresse-cell{background:#0a1826; border-radius:10px; padding:10px 4px; text-align:center;}
+  .adresse-cell .lbl{font-size:0.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em;}
+  .adresse-cell .val{font-size:1.55rem; font-weight:800; color:var(--accent2); margin-top:2px; line-height:1.1;}
+  .adresse-empty{color:var(--muted); font-style:italic; margin-top:10px; font-size:0.9rem;}
+  .adresse-multi-label{color:var(--muted); font-size:0.75rem; margin-top:14px; margin-bottom:-4px;}
+  .reste-line{margin-top:12px; font-size:1rem; font-weight:600;}
+  .reste-line.ok{color:var(--accent);}
+  .reste-line.warn{color:var(--accent2);}
+  tr.ecart-missing td{color:var(--danger);}
+  tr.ecart-surplus td{color:var(--accent2);}
+  .pcb-line{color:var(--muted); font-size:0.95rem; margin-top:2px;}
 </style>
 </head>
 <body>
@@ -122,6 +142,17 @@
   </div>
 </section>
 
+<!-- ========================= ÉCRAN CHOIX DU MODE ========================= -->
+<section id="screen-mode" class="screen" hidden>
+  <h1>Que voulez-vous faire ?</h1>
+  <button type="button" class="primary mode-btn" data-mode="inventaire">
+    <span class="emoji">❄️</span><span>Inventaire surgelé<br><span class="help" style="color:inherit;opacity:0.85;">Comptage des articles en rayon</span></span>
+  </button>
+  <button type="button" class="warn mode-btn" data-mode="reception">
+    <span class="emoji">📦</span><span>Réception marchandise<br><span class="help" style="color:inherit;opacity:0.85;">Mise en rayon d'une livraison entrepôt</span></span>
+  </button>
+</section>
+
 <!-- ========================= ÉCRAN SYNCHRONISATION ========================= -->
 <section id="screen-sync" class="screen" hidden>
   <h1>📶 Base articles</h1>
@@ -134,6 +165,32 @@
     <div id="sync-status" style="margin-top:12px"></div>
   </div>
   <button class="secondary" id="btn-sync-continue" style="width:100%">Continuer vers le scan →</button>
+</section>
+
+<!-- ========================= ÉCRAN SYNCHRONISATION RÉCEPTION ========================= -->
+<section id="screen-reception-sync" class="screen" hidden>
+  <h1>📶 Réception — données de la livraison</h1>
+  <p class="help">À faire impérativement pendant que vous avez du réseau, <strong>avant</strong> d'entrer dans la zone surgelée. Ces données sont mises à jour par le programme d'import lancé sur le PC après chaque export entrepôt.</p>
+  <div class="card">
+    <div class="summary-line"><span>Attendu — dernière synchro</span><strong id="sync-attendu-last">jamais</strong></div>
+    <div class="summary-line"><span>Articles attendus</span><strong id="sync-attendu-count">0</strong></div>
+    <div style="height:10px"></div>
+    <button class="primary" id="btn-sync-attendu" style="width:100%">Télécharger / mettre à jour l'attendu</button>
+    <div id="sync-attendu-status" style="margin-top:12px"></div>
+  </div>
+  <div class="card">
+    <div class="summary-line"><span>Emplacements — dernière synchro</span><strong id="sync-emp-last">jamais</strong></div>
+    <div class="summary-line"><span>Adresses chargées</span><strong id="sync-emp-count">0</strong></div>
+    <div style="height:10px"></div>
+    <button class="primary" id="btn-sync-emplacements" style="width:100%">Télécharger / mettre à jour les emplacements</button>
+    <div id="sync-emp-status" style="margin-top:12px"></div>
+  </div>
+  <button class="secondary" id="btn-reception-sync-continue" style="width:100%">Continuer vers le scan →</button>
+  <div class="card">
+    <h2>Nouvelle réception</h2>
+    <p class="help">Vide toutes les déclarations de colis enregistrées sur ce téléphone (l'attendu et les emplacements ne sont pas touchés). À faire au début d'une nouvelle livraison à ranger.</p>
+    <button class="danger" id="btn-new-reception" style="width:100%">Vider mes déclarations</button>
+  </div>
 </section>
 
 <!-- ========================= ÉCRAN SCAN ========================= -->
@@ -194,6 +251,61 @@
   </div>
 </section>
 
+<!-- ========================= ÉCRAN ARTICLE / COLIS (RÉCEPTION) ========================= -->
+<section id="screen-reception-article" class="screen" hidden>
+  <div class="card article-card" id="reception-article-card">
+    <span class="statut-badge" id="reception-statut-badge">Attendu</span>
+    <div class="article-ean" id="reception-code">Code article —</div>
+    <div class="article-libelle" id="reception-libelle">—</div>
+    <div class="pcb-line" id="reception-pcb"></div>
+    <div id="reception-unknown-libelle-wrap" hidden>
+      <label for="reception-manual-libelle-input">Libellé du produit (saisie manuelle)</label>
+      <input type="text" id="reception-manual-libelle-input" placeholder="Ex. GLACE VANILLE 1L">
+    </div>
+    <div class="reste-line" id="reception-reste"></div>
+    <div id="reception-adresse-wrap">
+      <div class="adresse-multi-label" id="reception-adresse-label-1" hidden>Emplacement 1</div>
+      <div class="adresse-grid" id="reception-adresse-grid-1" hidden>
+        <div class="adresse-cell"><div class="lbl">Allée</div><div class="val" id="ad1-allee">—</div></div>
+        <div class="adresse-cell"><div class="lbl">Travée</div><div class="val" id="ad1-travee">—</div></div>
+        <div class="adresse-cell"><div class="lbl">Niveau</div><div class="val" id="ad1-niveau">—</div></div>
+        <div class="adresse-cell"><div class="lbl">Rang</div><div class="val" id="ad1-rang">—</div></div>
+      </div>
+      <div class="adresse-multi-label" id="reception-adresse-label-2" hidden>Emplacement 2</div>
+      <div class="adresse-grid" id="reception-adresse-grid-2" hidden>
+        <div class="adresse-cell"><div class="lbl">Allée</div><div class="val" id="ad2-allee">—</div></div>
+        <div class="adresse-cell"><div class="lbl">Travée</div><div class="val" id="ad2-travee">—</div></div>
+        <div class="adresse-cell"><div class="lbl">Niveau</div><div class="val" id="ad2-niveau">—</div></div>
+        <div class="adresse-cell"><div class="lbl">Rang</div><div class="val" id="ad2-rang">—</div></div>
+      </div>
+      <p class="adresse-empty" id="reception-adresse-empty" hidden>Adresse inconnue pour cet article.</p>
+    </div>
+  </div>
+  <div class="card">
+    <label for="colis-input">Nombre de colis reçus (cette saisie)</label>
+    <input type="number" id="colis-input" inputmode="none" min="1" step="1" value="1" readonly>
+    <div class="keypad" id="colis-keypad">
+      <button type="button" data-digit="1">1</button>
+      <button type="button" data-digit="2">2</button>
+      <button type="button" data-digit="3">3</button>
+      <button type="button" data-digit="4">4</button>
+      <button type="button" data-digit="5">5</button>
+      <button type="button" data-digit="6">6</button>
+      <button type="button" data-digit="7">7</button>
+      <button type="button" data-digit="8">8</button>
+      <button type="button" data-digit="9">9</button>
+      <button type="button" class="key-clear" id="btn-colis-clear">C</button>
+      <button type="button" data-digit="0">0</button>
+      <button type="button" class="key-back" id="btn-colis-back">⌫</button>
+    </div>
+    <div style="height:12px"></div>
+    <div class="row">
+      <button class="secondary" id="btn-colis-cancel">Annuler</button>
+      <button class="primary" id="btn-colis-validate">Valider le colis</button>
+    </div>
+  </div>
+</section>
+
 <!-- ========================= ÉCRAN SESSION (MES COMPTAGES) ========================= -->
 <section id="screen-session" class="screen" hidden>
   <h1>📋 Mes comptages</h1>
@@ -223,6 +335,26 @@
   </div>
 </section>
 
+<!-- ========================= ÉCRAN MES DÉCLARATIONS (RÉCEPTION) ========================= -->
+<section id="screen-reception-session" class="screen" hidden>
+  <h1>📋 Mes déclarations</h1>
+  <div class="card">
+    <div class="summary-line"><span>Déclarations saisies</span><strong id="rsess-nb-lignes">0</strong></div>
+    <div class="summary-line"><span>Colis déclarés (total)</span><strong id="rsess-nb-colis">0</strong></div>
+    <div class="summary-line"><span>Dont non prévus / non reconnus</span><strong id="rsess-nb-surplus">0</strong></div>
+  </div>
+  <div class="card">
+    <h2>Détail des déclarations (les plus récentes en premier)</h2>
+    <div class="list-scroll">
+      <table>
+        <thead><tr><th>Article</th><th>Colis</th><th>Heure</th><th></th></tr></thead>
+        <tbody id="rsession-tbody"></tbody>
+      </table>
+      <p id="rsession-empty" class="help center" hidden>Aucune déclaration pour l'instant.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ========================= ÉCRAN EXPORT ========================= -->
 <section id="screen-export" class="screen" hidden>
   <h1>📤 Export</h1>
@@ -243,6 +375,39 @@
   </div>
 </section>
 
+<!-- ========================= ÉCRAN ÉCARTS (RÉCEPTION) ========================= -->
+<section id="screen-reception-report" class="screen" hidden>
+  <h1>📊 Écarts attendu / déclaré</h1>
+  <p class="help" id="reception-report-summary">—</p>
+  <div class="card">
+    <h2>Articles manquants (attendus, non complètement déclarés)</h2>
+    <div class="list-scroll">
+      <table>
+        <thead><tr><th>Article</th><th>Attendu</th><th>Déclaré</th><th>Manque</th></tr></thead>
+        <tbody id="reception-missing-tbody"></tbody>
+      </table>
+      <p id="reception-missing-empty" class="help center" hidden>Aucun article manquant.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Écarts en plus (surplus / non prévus)</h2>
+    <div class="list-scroll">
+      <table>
+        <thead><tr><th>Article</th><th>Attendu</th><th>Déclaré</th><th>Surplus</th></tr></thead>
+        <tbody id="reception-surplus-tbody"></tbody>
+      </table>
+      <p id="reception-surplus-empty" class="help center" hidden>Aucun surplus.</p>
+    </div>
+  </div>
+  <div class="card">
+    <p class="help">Le fichier CSV contient le détail complet (à joindre à un email pour une réclamation entrepôt). Le résumé par email envoie uniquement une synthèse en texte.</p>
+    <button class="primary" id="btn-export-ecarts" style="width:100%">Exporter le fichier des écarts (CSV)</button>
+    <div style="height:10px"></div>
+    <button class="secondary" id="btn-mail-ecarts" style="width:100%">Envoyer un résumé par email</button>
+    <div id="reception-report-result" style="margin-top:12px"></div>
+  </div>
+</section>
+
 <!-- ========================= BARRE DU HAUT + NAV (hors écran login) ========================= -->
 <div class="topbar" id="topbar" hidden>
   <div class="brand"><img src="data:image/png;base64,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" alt="123-Click"></div>
@@ -250,6 +415,7 @@
     <span class="badge" id="badge-online">…</span>
     <span class="badge" id="badge-articles">0 articles</span>
     <span class="badge" id="badge-lignes">0 ligne(s)</span>
+    <button class="ghost" id="btn-switch-mode" style="padding:4px 10px; font-size:0.72rem;">🔀 Changer de mode</button>
   </div>
 </div>
 <div class="nav" id="bottom-nav" hidden>
@@ -257,6 +423,12 @@
   <button class="ghost" data-screen="screen-session">Mes comptages</button>
   <button class="ghost" data-screen="screen-export">Export</button>
   <button class="ghost" data-screen="screen-sync">Base articles</button>
+</div>
+<div class="nav" id="bottom-nav-reception" hidden>
+  <button class="ghost" data-screen="screen-scan">Scanner</button>
+  <button class="ghost" data-screen="screen-reception-session">Mes déclarations</button>
+  <button class="ghost" data-screen="screen-reception-report">Écarts</button>
+  <button class="ghost" data-screen="screen-reception-sync">Sync</button>
 </div>
 <footer class="small">Inventaire Surgelé · 123-Click / Groupe Créo</footer>
 
@@ -272,11 +444,22 @@
   const SHEET_NAME = 'Articles';
   const SYNC_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(SHEET_NAME);
 
+  // Mode "Réception marchandise" : 2 feuilles supplémentaires du même
+  // fichier Google Sheets, alimentées par le script local d'import
+  // (importer_reception.py) après chaque export entrepôt.
+  const SHEET_NAME_ATTENDU = 'Attendu';
+  const SHEET_NAME_EMPLACEMENTS = 'Emplacements';
+  const SYNC_URL_ATTENDU = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(SHEET_NAME_ATTENDU);
+  const SYNC_URL_EMPLACEMENTS = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(SHEET_NAME_EMPLACEMENTS);
+
   const DB_NAME = 'InventaireSurgeleDB';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE_ARTICLES = 'articles';
   const STORE_LIGNES = 'lignes';
   const STORE_META = 'meta';
+  const STORE_ATTENDU = 'attendu';
+  const STORE_EMPLACEMENTS = 'emplacements';
+  const STORE_RECEPTION = 'reception_lignes';
 
   // Format de sortie Ginsoft (voir cahier des charges) :
   // "01" + 7 espaces + "001" + EAN (13, zéros à gauche) + quantité (5, zéros à gauche)
@@ -293,6 +476,12 @@
         if (!db.objectStoreNames.contains(STORE_ARTICLES)) db.createObjectStore(STORE_ARTICLES, { keyPath: 'ean' });
         if (!db.objectStoreNames.contains(STORE_LIGNES)) db.createObjectStore(STORE_LIGNES, { keyPath: 'id', autoIncrement: true });
         if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META, { keyPath: 'key' });
+        if (!db.objectStoreNames.contains(STORE_ATTENDU)) db.createObjectStore(STORE_ATTENDU, { keyPath: 'codeArticle' });
+        if (!db.objectStoreNames.contains(STORE_EMPLACEMENTS)) {
+          const empStore = db.createObjectStore(STORE_EMPLACEMENTS, { keyPath: 'id', autoIncrement: true });
+          empStore.createIndex('byCode', 'codeArticle', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORE_RECEPTION)) db.createObjectStore(STORE_RECEPTION, { keyPath: 'id', autoIncrement: true });
       };
       req.onsuccess = (e) => resolve(e.target.result);
       req.onerror = (e) => reject(e.target.error);
@@ -310,6 +499,14 @@
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const req = db.transaction(store, 'readonly').objectStore(store).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function dbGetAllByIndex(store, indexName, value) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(store, 'readonly').objectStore(store).index(indexName).getAll(value);
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -370,6 +567,16 @@
     if (!raw) return '';
     return String(raw).replace(/[^0-9]/g, '');
   }
+  // Nettoie un "Code article" lu depuis un fichier Excel/Google Sheets : les
+  // valeurs numériques peuvent arriver avec un ".0" final (lecture en
+  // nombre flottant), qu'il faut retirer pour que la clé de rapprochement
+  // soit identique partout (Articles / Attendu / Emplacements).
+  function normalizeCode(raw) {
+    if (raw === null || raw === undefined) return '';
+    let s = String(raw).trim();
+    if (/^\d+\.0$/.test(s)) s = s.slice(0, -2);
+    return s;
+  }
   function padDigits(value, len) {
     let s = String(value).replace(/[^0-9]/g, '');
     if (s.length > len) s = s.slice(-len);
@@ -413,6 +620,8 @@
     document.getElementById(id).hidden = false;
     if (id === 'screen-session') renderSession();
     if (id === 'screen-export') renderExportScreen();
+    if (id === 'screen-reception-session') renderReceptionSession();
+    if (id === 'screen-reception-report') renderReceptionReport();
     if (id === 'screen-scan') resumeScanIfNeeded();
     else pauseScan();
   }
@@ -429,6 +638,8 @@
   // ÉTAT
   // ============================================================
   let pendingScan = null; // { ean, article|null }
+  let pendingReception = null; // { ean, codeArticle, libelle, pcb, attendu, emplacements, statut }
+  let currentMode = null; // 'inventaire' | 'reception'
 
   // ============================================================
   // CONNEXION
@@ -439,7 +650,20 @@
    'btn-torch','article-card','flag-unknown','qty-ean','qty-libelle','unknown-libelle-wrap','manual-libelle-input',
    'qty-input','qty-keypad','btn-qty-cancel','btn-qty-validate','sess-nb-lignes','sess-nb-articles','sess-nb-inconnus',
    'session-tbody','session-empty','totals-tbody','btn-export-main','btn-export-inconnus','export-summary','export-result','btn-new-session',
-   'badge-online','badge-articles','badge-lignes','topbar','bottom-nav'
+   'badge-online','badge-articles','badge-lignes','topbar','bottom-nav',
+   'bottom-nav-reception','btn-switch-mode',
+   'sync-attendu-last','sync-attendu-count','btn-sync-attendu','sync-attendu-status',
+   'sync-emp-last','sync-emp-count','btn-sync-emplacements','sync-emp-status',
+   'btn-reception-sync-continue','btn-new-reception',
+   'reception-statut-badge','reception-code','reception-libelle','reception-pcb',
+   'reception-unknown-libelle-wrap','reception-manual-libelle-input','reception-reste',
+   'reception-adresse-label-1','reception-adresse-grid-1','ad1-allee','ad1-travee','ad1-niveau','ad1-rang',
+   'reception-adresse-label-2','reception-adresse-grid-2','ad2-allee','ad2-travee','ad2-niveau','ad2-rang',
+   'reception-adresse-empty',
+   'colis-input','colis-keypad','btn-colis-cancel','btn-colis-validate','btn-colis-back','btn-colis-clear',
+   'rsess-nb-lignes','rsess-nb-colis','rsess-nb-surplus','rsession-tbody','rsession-empty',
+   'reception-report-summary','reception-missing-tbody','reception-missing-empty',
+   'reception-surplus-tbody','reception-surplus-empty','btn-export-ecarts','btn-mail-ecarts','reception-report-result'
   ].forEach((id) => els[id] = document.getElementById(id));
 
   function checkPassword() {
@@ -457,15 +681,35 @@
 
   async function afterLogin() {
     els['topbar'].hidden = false;
-    els['bottom-nav'].hidden = false;
+    els['bottom-nav'].hidden = true;
+    els['bottom-nav-reception'].hidden = true;
+    showScreen('screen-mode');
+  }
+
+  // ============================================================
+  // CHOIX DU MODE (Inventaire / Réception marchandise)
+  // ============================================================
+  async function enterMode(mode) {
+    currentMode = mode;
+    els['bottom-nav'].hidden = mode !== 'inventaire';
+    els['bottom-nav-reception'].hidden = mode !== 'reception';
     await refreshBadges();
-    const nb = await dbGet(STORE_META, 'nbArticles');
-    if (!nb || !nb.value) {
-      showScreen('screen-sync');
+    if (mode === 'inventaire') {
+      const nb = await dbGet(STORE_META, 'nbArticles');
+      showScreen(!nb || !nb.value ? 'screen-sync' : 'screen-scan');
     } else {
-      showScreen('screen-scan');
+      const nb = await dbGet(STORE_META, 'nbAttendu');
+      showScreen(!nb || !nb.value ? 'screen-reception-sync' : 'screen-scan');
     }
   }
+  document.querySelectorAll('#screen-mode button[data-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => enterMode(btn.getAttribute('data-mode')));
+  });
+  els['btn-switch-mode'].addEventListener('click', () => {
+    els['bottom-nav'].hidden = true;
+    els['bottom-nav-reception'].hidden = true;
+    showScreen('screen-mode');
+  });
 
   // ============================================================
   // SYNCHRONISATION BASE ARTICLES
@@ -477,13 +721,20 @@
     els['sync-count'].textContent = nb && nb.value ? nb.value : 0;
   }
   async function refreshBadges() {
-    const nb = await dbGet(STORE_META, 'nbArticles');
-    const lignes = await dbGetAll(STORE_LIGNES);
-    els['badge-articles'].textContent = (nb && nb.value ? nb.value : 0) + ' articles';
-    els['badge-lignes'].textContent = lignes.length + ' ligne(s)';
     const online = navigator.onLine;
     els['badge-online'].textContent = online ? 'En ligne' : 'Hors ligne';
     els['badge-online'].className = 'badge ' + (online ? 'on' : 'off');
+    if (currentMode === 'reception') {
+      const nb = await dbGet(STORE_META, 'nbAttendu');
+      const lignes = await dbGetAll(STORE_RECEPTION);
+      els['badge-articles'].textContent = (nb && nb.value ? nb.value : 0) + ' articles attendus';
+      els['badge-lignes'].textContent = lignes.length + ' déclaration(s)';
+    } else {
+      const nb = await dbGet(STORE_META, 'nbArticles');
+      const lignes = await dbGetAll(STORE_LIGNES);
+      els['badge-articles'].textContent = (nb && nb.value ? nb.value : 0) + ' articles';
+      els['badge-lignes'].textContent = lignes.length + ' ligne(s)';
+    }
   }
   window.addEventListener('online', refreshBadges);
   window.addEventListener('offline', refreshBadges);
@@ -555,9 +806,123 @@
   els['btn-sync-continue'].addEventListener('click', () => showScreen('screen-scan'));
 
   // ============================================================
+  // SYNCHRONISATION RÉCEPTION (Attendu / Emplacements)
+  // ============================================================
+  async function refreshReceptionSyncInfo() {
+    const lastA = await dbGet(STORE_META, 'lastSyncAttendu');
+    const nbA = await dbGet(STORE_META, 'nbAttendu');
+    els['sync-attendu-last'].textContent = lastA && lastA.value ? new Date(lastA.value).toLocaleString('fr-FR') : 'jamais';
+    els['sync-attendu-count'].textContent = nbA && nbA.value ? nbA.value : 0;
+    const lastE = await dbGet(STORE_META, 'lastSyncEmplacements');
+    const nbE = await dbGet(STORE_META, 'nbEmplacements');
+    els['sync-emp-last'].textContent = lastE && lastE.value ? new Date(lastE.value).toLocaleString('fr-FR') : 'jamais';
+    els['sync-emp-count'].textContent = nbE && nbE.value ? nbE.value : 0;
+  }
+
+  async function syncAttendu() {
+    els['btn-sync-attendu'].disabled = true;
+    els['sync-attendu-status'].innerHTML = '<div class="spinner"></div><p class="help center">Téléchargement de l\'attendu…</p>';
+    try {
+      const resp = await fetch(SYNC_URL_ATTENDU, { cache: 'no-store' });
+      if (!resp.ok) throw new Error('Erreur réseau (HTTP ' + resp.status + ')');
+      const text = await resp.text();
+      const rows = parseCSV(text);
+      if (!rows.length) throw new Error('Feuille "Attendu" vide ou illisible.');
+      const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+      const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
+      const idxLib = header.findIndex((h) => h.indexOf('libell') !== -1);
+      const idxPCB = header.findIndex((h) => h.trim() === 'pcb' || h.indexOf('pcb') !== -1);
+      const idxNbUC = header.findIndex((h) => h.indexOf('nb uc') !== -1 || h.indexOf('nbuc') !== -1);
+      const idxColis = header.findIndex((h) => h.indexOf('colis') !== -1);
+      if (idxCode === -1 || idxLib === -1) throw new Error('Colonnes Code article / Libellé introuvables dans la feuille "Attendu".');
+      const items = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const codeArticle = normalizeCode(r[idxCode]);
+        const libelle = (r[idxLib] || '').trim();
+        if (!codeArticle || !libelle) continue;
+        const pcb = idxPCB !== -1 ? normalizeCode(r[idxPCB]) : '';
+        const nbUC = idxNbUC !== -1 ? normalizeCode(r[idxNbUC]) : '';
+        let colisAttendus = idxColis !== -1 ? normalizeCode(r[idxColis]) : '';
+        if (!colisAttendus && nbUC && pcb && Number(pcb) > 0) {
+          colisAttendus = String(Number(nbUC) / Number(pcb));
+        }
+        items.push({ codeArticle, libelle, pcb, nbUC, colisAttendus: colisAttendus || '0' });
+      }
+      if (!items.length) throw new Error('Aucun article attendu trouvé.');
+      await dbClear(STORE_ATTENDU);
+      await dbPutAll(STORE_ATTENDU, items);
+      await dbPut(STORE_META, { key: 'lastSyncAttendu', value: new Date().toISOString() });
+      await dbPut(STORE_META, { key: 'nbAttendu', value: items.length });
+      els['sync-attendu-status'].innerHTML = '<p class="ok">' + items.length + ' articles attendus chargés avec succès.</p>';
+      await refreshReceptionSyncInfo();
+      await refreshBadges();
+    } catch (e) {
+      els['sync-attendu-status'].innerHTML = '<p class="err">Échec de la synchronisation : ' + (e.message || e) + '</p>';
+    } finally {
+      els['btn-sync-attendu'].disabled = false;
+    }
+  }
+
+  async function syncEmplacements() {
+    els['btn-sync-emplacements'].disabled = true;
+    els['sync-emp-status'].innerHTML = '<div class="spinner"></div><p class="help center">Téléchargement des emplacements…</p>';
+    try {
+      const resp = await fetch(SYNC_URL_EMPLACEMENTS, { cache: 'no-store' });
+      if (!resp.ok) throw new Error('Erreur réseau (HTTP ' + resp.status + ')');
+      const text = await resp.text();
+      const rows = parseCSV(text);
+      if (!rows.length) throw new Error('Feuille "Emplacements" vide ou illisible.');
+      const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+      const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
+      const idxAllee = header.findIndex((h) => h.indexOf('all') !== -1);
+      const idxTravee = header.findIndex((h) => h.indexOf('trav') !== -1);
+      const idxNiveau = header.findIndex((h) => h.indexOf('niveau') !== -1);
+      const idxRang = header.findIndex((h) => h.indexOf('rang') !== -1);
+      if (idxCode === -1) throw new Error('Colonne Code article introuvable dans la feuille "Emplacements".');
+      const items = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const codeArticle = normalizeCode(r[idxCode]);
+        if (!codeArticle) continue;
+        items.push({
+          codeArticle,
+          allee: idxAllee !== -1 ? (r[idxAllee] || '').trim() : '',
+          travee: idxTravee !== -1 ? normalizeCode(r[idxTravee]) : '',
+          niveau: idxNiveau !== -1 ? normalizeCode(r[idxNiveau]) : '',
+          rang: idxRang !== -1 ? normalizeCode(r[idxRang]) : ''
+        });
+      }
+      if (!items.length) throw new Error('Aucun emplacement trouvé.');
+      await dbClear(STORE_EMPLACEMENTS);
+      await dbPutAll(STORE_EMPLACEMENTS, items);
+      await dbPut(STORE_META, { key: 'lastSyncEmplacements', value: new Date().toISOString() });
+      await dbPut(STORE_META, { key: 'nbEmplacements', value: items.length });
+      els['sync-emp-status'].innerHTML = '<p class="ok">' + items.length + ' adresses chargées avec succès.</p>';
+      await refreshReceptionSyncInfo();
+    } catch (e) {
+      els['sync-emp-status'].innerHTML = '<p class="err">Échec de la synchronisation : ' + (e.message || e) + '</p>';
+    } finally {
+      els['btn-sync-emplacements'].disabled = false;
+    }
+  }
+  els['btn-sync-attendu'].addEventListener('click', syncAttendu);
+  els['btn-sync-emplacements'].addEventListener('click', syncEmplacements);
+  els['btn-reception-sync-continue'].addEventListener('click', () => showScreen('screen-scan'));
+  refreshReceptionSyncInfo();
+  els['btn-new-reception'].addEventListener('click', async () => {
+    if (!confirm('Vider toutes les déclarations de colis enregistrées sur ce téléphone ?')) return;
+    await dbClear(STORE_RECEPTION);
+    await refreshBadges();
+    els['sync-attendu-status'].innerHTML = '';
+    els['sync-emp-status'].innerHTML = '';
+    alert('Déclarations vidées.');
+  });
+
+  // ============================================================
   // NAVIGATION BAS DE PAGE
   // ============================================================
-  document.querySelectorAll('#bottom-nav button').forEach((btn) => {
+  document.querySelectorAll('#bottom-nav button, #bottom-nav-reception button').forEach((btn) => {
     btn.addEventListener('click', () => showScreen(btn.getAttribute('data-screen')));
   });
 
@@ -725,14 +1090,16 @@
   function onBarcodeDetected(rawText) {
     pauseScan();
     const ean = normalizeEAN(rawText);
-    handleScannedEAN(ean);
+    if (currentMode === 'reception') handleScannedEANReception(ean);
+    else handleScannedEAN(ean);
   }
   els['btn-manual-ean'].addEventListener('click', () => {
     const ean = normalizeEAN(els['manual-ean-input'].value);
     if (!ean) return;
     els['manual-ean-input'].value = '';
     pauseScan();
-    handleScannedEAN(ean);
+    if (currentMode === 'reception') handleScannedEANReception(ean);
+    else handleScannedEAN(ean);
   });
 
   // ============================================================
@@ -827,6 +1194,155 @@
     }
     await dbPut(STORE_LIGNES, { ean: pendingScan.ean, libelle, quantite: qty, reconnu, ts: new Date().toISOString() });
     pendingScan = null;
+    await refreshBadges();
+    showScreen('screen-scan');
+  });
+
+  // ============================================================
+  // ÉCRAN ARTICLE / COLIS (RÉCEPTION MARCHANDISE)
+  // ============================================================
+  async function sommeDeclareePourCode(codeArticle) {
+    if (!codeArticle) return 0;
+    const lignes = await dbGetAll(STORE_RECEPTION);
+    return lignes
+      .filter((l) => l.codeArticle === codeArticle)
+      .reduce((sum, l) => sum + (Number(l.colis) || 0), 0);
+  }
+
+  function remplirAdresseGrid(prefix, adr) {
+    document.getElementById(prefix + '-allee').textContent = adr.allee || '—';
+    document.getElementById(prefix + '-travee').textContent = adr.travee || '—';
+    document.getElementById(prefix + '-niveau').textContent = adr.niveau || '—';
+    document.getElementById(prefix + '-rang').textContent = adr.rang || '—';
+  }
+
+  async function handleScannedEANReception(ean) {
+    const article = await dbGet(STORE_ARTICLES, ean);
+    const codeArticle = article ? normalizeCode(article.codeArticle) : '';
+    const attendu = codeArticle ? await dbGet(STORE_ATTENDU, codeArticle) : null;
+    let statut;
+    if (attendu) statut = 'attendu';
+    else if (article) statut = 'surplus';
+    else statut = 'inconnu';
+    const libelle = attendu ? attendu.libelle : (article ? article.libelle : '');
+    const emplacements = codeArticle ? await dbGetAllByIndex(STORE_EMPLACEMENTS, 'byCode', codeArticle) : [];
+
+    pendingReception = { ean, codeArticle, libelle, pcb: attendu ? attendu.pcb : '', attendu, statut };
+
+    // Badge de statut
+    els['reception-statut-badge'].className = 'statut-badge ' + statut;
+    els['reception-statut-badge'].textContent =
+      statut === 'attendu' ? 'Attendu' :
+      statut === 'surplus' ? 'Non prévu dans cette livraison' : 'Article non reconnu';
+
+    els['reception-code'].textContent = codeArticle ? ('Code article ' + codeArticle) : ('EAN ' + ean);
+    els['reception-pcb'].textContent = attendu && attendu.pcb ? ('PCB : ' + attendu.pcb + ' unité(s) / colis') : '';
+
+    if (statut === 'inconnu') {
+      els['reception-libelle'].textContent = 'Article non reconnu';
+      els['reception-unknown-libelle-wrap'].hidden = false;
+      els['reception-manual-libelle-input'].value = '';
+    } else {
+      els['reception-libelle'].textContent = libelle || '(sans libellé)';
+      els['reception-unknown-libelle-wrap'].hidden = true;
+    }
+
+    // Reste à ranger (uniquement pertinent si l'article est attendu)
+    if (attendu) {
+      const declare = await sommeDeclareePourCode(codeArticle);
+      const attenduNb = Number(attendu.colisAttendus) || 0;
+      const reste = attenduNb - declare;
+      if (reste > 0) {
+        els['reception-reste'].className = 'reste-line warn';
+        els['reception-reste'].textContent = declare + ' colis déjà déclaré(s) — reste ' + reste + ' colis attendu(s).';
+      } else if (reste === 0) {
+        els['reception-reste'].className = 'reste-line ok';
+        els['reception-reste'].textContent = declare + ' colis déclaré(s) — quantité attendue atteinte ✅.';
+      } else {
+        els['reception-reste'].className = 'reste-line warn';
+        els['reception-reste'].textContent = declare + ' colis déclaré(s) — dépassement de ' + (-reste) + ' colis par rapport à l\'attendu (' + attenduNb + ').';
+      }
+    } else {
+      els['reception-reste'].className = 'reste-line';
+      els['reception-reste'].textContent = '';
+    }
+
+    // Adresse(s) "en gros"
+    els['reception-adresse-label-1'].hidden = true;
+    els['reception-adresse-grid-1'].hidden = true;
+    els['reception-adresse-label-2'].hidden = true;
+    els['reception-adresse-grid-2'].hidden = true;
+    els['reception-adresse-empty'].hidden = true;
+    if (emplacements.length >= 1) {
+      remplirAdresseGrid('ad1', emplacements[0]);
+      els['reception-adresse-grid-1'].hidden = false;
+      els['reception-adresse-label-1'].hidden = emplacements.length < 2;
+    }
+    if (emplacements.length >= 2) {
+      remplirAdresseGrid('ad2', emplacements[1]);
+      els['reception-adresse-grid-2'].hidden = false;
+      els['reception-adresse-label-2'].hidden = false;
+    }
+    if (emplacements.length === 0) {
+      els['reception-adresse-empty'].hidden = false;
+    }
+
+    els['colis-input'].value = '1';
+    showScreen('screen-reception-article');
+    const toFocus = statut === 'inconnu' ? els['reception-manual-libelle-input'] : els['colis-input'];
+    toFocus.focus({ preventScroll: true });
+    if (toFocus === els['reception-manual-libelle-input']) toFocus.select();
+  }
+
+  els['reception-manual-libelle-input'].addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); els['btn-colis-validate'].click(); }
+  });
+
+  function makeKeypadHandlers(inputEl, maxLen) {
+    return {
+      digit(d) {
+        let cur = inputEl.value || '';
+        if (cur === '0') cur = '';
+        const next = cur + d;
+        if (next.length > maxLen) return;
+        inputEl.value = next;
+      },
+      back() { inputEl.value = (inputEl.value || '').slice(0, -1); },
+      clear() { inputEl.value = ''; }
+    };
+  }
+  const colisKeypadHandlers = makeKeypadHandlers(els['colis-input'], 3);
+  els['colis-keypad'].addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.digit !== undefined) colisKeypadHandlers.digit(btn.dataset.digit);
+    else if (btn.id === 'btn-colis-back') colisKeypadHandlers.back();
+    else if (btn.id === 'btn-colis-clear') colisKeypadHandlers.clear();
+  });
+
+  els['btn-colis-cancel'].addEventListener('click', () => {
+    pendingReception = null;
+    showScreen('screen-scan');
+  });
+
+  els['btn-colis-validate'].addEventListener('click', async () => {
+    if (!pendingReception) return;
+    const colis = parseInt(els['colis-input'].value, 10);
+    if (!colis || colis < 1) { els['colis-input'].focus(); return; }
+    let libelle = pendingReception.libelle;
+    if (pendingReception.statut === 'inconnu') {
+      libelle = (els['reception-manual-libelle-input'].value || '').trim();
+      if (!libelle) { els['reception-manual-libelle-input'].focus(); return; }
+    }
+    await dbPut(STORE_RECEPTION, {
+      codeArticle: pendingReception.codeArticle || null,
+      ean: pendingReception.ean,
+      libelle,
+      colis,
+      statut: pendingReception.statut,
+      ts: new Date().toISOString()
+    });
+    pendingReception = null;
     await refreshBadges();
     showScreen('screen-scan');
   });
@@ -974,6 +1490,136 @@
     await refreshBadges();
     els['export-result'].innerHTML = '<p class="help">Session vidée, prêt pour un nouveau comptage.</p>';
     showScreen('screen-scan');
+  });
+
+  // ============================================================
+  // ÉCRAN MES DÉCLARATIONS (RÉCEPTION)
+  // ============================================================
+  async function renderReceptionSession() {
+    const lignes = await dbGetAll(STORE_RECEPTION);
+    lignes.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    els['rsess-nb-lignes'].textContent = lignes.length;
+    els['rsess-nb-colis'].textContent = lignes.reduce((s, l) => s + (Number(l.colis) || 0), 0);
+    els['rsess-nb-surplus'].textContent = lignes.filter((l) => l.statut !== 'attendu').length;
+
+    els['rsession-tbody'].innerHTML = '';
+    els['rsession-empty'].hidden = lignes.length > 0;
+    lignes.forEach((l) => {
+      const tr = document.createElement('tr');
+      if (l.statut !== 'attendu') tr.className = 'unknown';
+      const heure = new Date(l.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      tr.innerHTML = '<td>' + escapeHtml(l.libelle) + (l.codeArticle ? '<br><span class="article-ean">' + l.codeArticle + '</span>' : '') + '</td>' +
+        '<td><span class="qty-pill">' + l.colis + '</span></td>' +
+        '<td>' + heure + '</td>' +
+        '<td><button class="ghost" data-del="' + l.id + '" style="padding:6px 10px;font-size:0.8rem;">Suppr.</button></td>';
+      els['rsession-tbody'].appendChild(tr);
+    });
+    els['rsession-tbody'].querySelectorAll('button[data-del]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        await dbDelete(STORE_RECEPTION, Number(btn.getAttribute('data-del')));
+        await refreshBadges();
+        renderReceptionSession();
+      });
+    });
+  }
+
+  // ============================================================
+  // ÉCRAN ÉCARTS (RÉCEPTION)
+  // ============================================================
+  async function computeEcarts() {
+    const attendus = await dbGetAll(STORE_ATTENDU);
+    const lignes = await dbGetAll(STORE_RECEPTION);
+    const attendusByCode = {};
+    attendus.forEach((a) => { attendusByCode[a.codeArticle] = a; });
+
+    const declareByCode = {};
+    const horsAttendu = {}; // clé = codeArticle ou 'EAN:'+ean ou libellé, pour les lignes sans correspondance
+    lignes.forEach((l) => {
+      if (l.codeArticle && attendusByCode[l.codeArticle]) {
+        declareByCode[l.codeArticle] = (declareByCode[l.codeArticle] || 0) + (Number(l.colis) || 0);
+      } else {
+        const key = l.codeArticle || (l.ean ? 'EAN:' + l.ean : 'LIB:' + l.libelle);
+        if (!horsAttendu[key]) horsAttendu[key] = { codeArticle: l.codeArticle || '', libelle: l.libelle, colis: 0 };
+        horsAttendu[key].colis += Number(l.colis) || 0;
+      }
+    });
+
+    const manquants = [];
+    const surplus = [];
+    attendus.forEach((a) => {
+      const declare = declareByCode[a.codeArticle] || 0;
+      const attenduNb = Number(a.colisAttendus) || 0;
+      if (declare < attenduNb) {
+        manquants.push({ codeArticle: a.codeArticle, libelle: a.libelle, attendu: attenduNb, declare, ecart: attenduNb - declare });
+      } else if (declare > attenduNb) {
+        surplus.push({ codeArticle: a.codeArticle, libelle: a.libelle, attendu: attenduNb, declare, ecart: declare - attenduNb });
+      }
+    });
+    Object.values(horsAttendu).forEach((h) => {
+      surplus.push({ codeArticle: h.codeArticle, libelle: h.libelle, attendu: 0, declare: h.colis, ecart: h.colis });
+    });
+    manquants.sort((a, b) => b.ecart - a.ecart);
+    surplus.sort((a, b) => b.ecart - a.ecart);
+    return { manquants, surplus, nbAttendus: attendus.length };
+  }
+
+  async function renderReceptionReport() {
+    const { manquants, surplus, nbAttendus } = await computeEcarts();
+    els['reception-report-summary'].textContent = nbAttendus
+      ? nbAttendus + ' article(s) attendu(s) au total · ' + manquants.length + ' manquant(s) · ' + surplus.length + ' écart(s) en plus.'
+      : 'Aucune donnée "Attendu" chargée — synchronisez la feuille Attendu avant de consulter les écarts.';
+
+    els['reception-missing-tbody'].innerHTML = '';
+    els['reception-missing-empty'].hidden = manquants.length > 0;
+    manquants.forEach((m) => {
+      const tr = document.createElement('tr');
+      tr.className = 'ecart-missing';
+      tr.innerHTML = '<td>' + escapeHtml(m.libelle) + '<br><span class="article-ean">' + m.codeArticle + '</span></td>' +
+        '<td>' + m.attendu + '</td><td>' + m.declare + '</td><td>' + m.ecart + '</td>';
+      els['reception-missing-tbody'].appendChild(tr);
+    });
+
+    els['reception-surplus-tbody'].innerHTML = '';
+    els['reception-surplus-empty'].hidden = surplus.length > 0;
+    surplus.forEach((s) => {
+      const tr = document.createElement('tr');
+      tr.className = 'ecart-surplus';
+      tr.innerHTML = '<td>' + escapeHtml(s.libelle) + (s.codeArticle ? '<br><span class="article-ean">' + s.codeArticle + '</span>' : '') + '</td>' +
+        '<td>' + s.attendu + '</td><td>' + s.declare + '</td><td>' + s.ecart + '</td>';
+      els['reception-surplus-tbody'].appendChild(tr);
+    });
+
+    els['reception-report-result'].innerHTML = '';
+  }
+
+  function buildEcartsCSV(manquants, surplus) {
+    const rows = [['Type', 'Code article', 'Libellé', 'Colis attendus', 'Colis déclarés', 'Écart']];
+    manquants.forEach((m) => rows.push(['Manquant', m.codeArticle, m.libelle, m.attendu, m.declare, m.ecart]));
+    surplus.forEach((s) => rows.push(['Surplus', s.codeArticle, s.libelle, s.attendu, s.declare, s.ecart]));
+    return rows.map((r) => r.map(csvEscape).join(';')).join('\r\n');
+  }
+
+  els['btn-export-ecarts'].addEventListener('click', async () => {
+    const { manquants, surplus } = await computeEcarts();
+    if (!manquants.length && !surplus.length) {
+      els['reception-report-result'].innerHTML = '<p class="help">Aucun écart à exporter — tout est conforme.</p>';
+      return;
+    }
+    const csv = buildEcartsCSV(manquants, surplus);
+    const filename = 'ecarts_reception_' + formatStamp(new Date()) + '.csv';
+    downloadTextFile(filename, '﻿' + csv, 'text/csv');
+    els['reception-report-result'].innerHTML = '<p class="ok">Fichier "' + filename + '" téléchargé.</p>';
+  });
+
+  els['btn-mail-ecarts'].addEventListener('click', async () => {
+    const { manquants, surplus } = await computeEcarts();
+    const lignesTexte = [];
+    manquants.forEach((m) => lignesTexte.push('MANQUANT - ' + m.codeArticle + ' ' + m.libelle + ' : attendu ' + m.attendu + ', déclaré ' + m.declare + ', manque ' + m.ecart));
+    surplus.forEach((s) => lignesTexte.push('SURPLUS - ' + (s.codeArticle || '(non prévu)') + ' ' + s.libelle + ' : attendu ' + s.attendu + ', déclaré ' + s.declare + ', surplus ' + s.ecart));
+    const corps = lignesTexte.length ? lignesTexte.join('\n') : 'Aucun écart constaté sur cette réception.';
+    const sujet = 'Écarts réception marchandise - ' + new Date().toLocaleDateString('fr-FR');
+    const url = 'mailto:?subject=' + encodeURIComponent(sujet) + '&body=' + encodeURIComponent(corps + '\n\n(Le détail complet est disponible dans le fichier CSV exporté depuis l\'application.)');
+    window.location.href = url;
   });
 
   // ============================================================

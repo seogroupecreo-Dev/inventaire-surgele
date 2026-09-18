@@ -4,7 +4,7 @@
 // précharge automatiquement le moteur de scan zxing-wasm et son .wasm
 // en cache, en plus du shell de l'application).
 
-const CACHE_NAME = 'inv-surgele-cache-v8';
+const CACHE_NAME = 'inv-surgele-cache-v9';
 
 const APP_SHELL = [
   './',
