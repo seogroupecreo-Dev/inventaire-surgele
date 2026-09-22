@@ -927,9 +927,24 @@
   });
 
   // ============================================================
-  // SCAN CAMÉRA (zxing-wasm)
+  // SCAN CAMÉRA — moteur natif (Android) + zxing-wasm (iOS / repli)
   // ============================================================
+  // Deux moteurs de décodage possibles :
+  //  - `BarcodeDetector` natif du navigateur : sur Android (Chrome/WebView),
+  //    il s'appuie sur Google ML Kit, accéléré matériellement — nettement
+  //    plus rapide et plus fiable que du décodage logiciel sur un CPU
+  //    d'entrée/milieu de gamme. iOS/Safari ne l'implémente pas du tout.
+  //  - zxing-wasm (logiciel, dans le navigateur) : seul moteur possible sur
+  //    iOS, et utilisé en repli sur les rares Android où `BarcodeDetector`
+  //    serait absent ou ne supporterait pas les formats requis.
+  // C'est cet écart (décodage matériel sur Android vs. décodage logiciel
+  // identique des deux côtés auparavant) qui explique qu'un même code,
+  // détecté instantanément sur iPhone, n'accrochait presque jamais sur
+  // Android : un CPU Apple suffit à décoder le flux en logiciel assez vite,
+  // beaucoup de puces Android d'entrée de gamme non.
   let zxingMod = null;
+  let nativeDetector = null;        // instance BarcodeDetector si disponible
+  let nativeDetectorFailed = false; // true si le moteur natif a planté à l'usage (repli définitif sur zxing pour la session)
   let videoStream = null;
   let currentTrack = null;
   let scanning = false;
@@ -937,6 +952,25 @@
   let frameCount = 0, lastFpsTime = performance.now();
   let torchOn = false;
   let currentZoom = 1.5;
+
+  const BARCODE_FORMATS_NATIVE = ['ean_13', 'ean_8', 'upc_a'];
+
+  async function initNativeDetector() {
+    if (nativeDetector || nativeDetectorFailed || !('BarcodeDetector' in window)) return;
+    try {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      const usable = BARCODE_FORMATS_NATIVE.filter((f) => supported.includes(f));
+      if (!usable.length) return; // navigateur sans les formats requis -> reste sur zxing
+      nativeDetector = new window.BarcodeDetector({ formats: usable });
+    } catch (e) {
+      // Environnement qui annonce BarcodeDetector mais ne fonctionne pas
+      // réellement : on ignore, le repli zxing-wasm prend le relais.
+    }
+  }
+  // Tenté dès le chargement de l'appli (indépendant de la caméra), pour que
+  // la disponibilité du moteur natif soit déjà connue à l'ouverture de
+  // l'écran de scan, sans latence supplémentaire pour l'utilisateur.
+  initNativeDetector();
 
   async function loadZxing() {
     if (zxingMod) return zxingMod;
@@ -1006,8 +1040,9 @@
     if (!scanning) return;
     const now = performance.now();
     frameCount++;
+    const useNative = !!(nativeDetector && !nativeDetectorFailed);
     if (now - lastFpsTime > 1000) {
-      els['fps-counter'].textContent = frameCount + ' img/s';
+      els['fps-counter'].textContent = frameCount + ' img/s · ' + (useNative ? 'natif' : 'zxing');
       frameCount = 0; lastFpsTime = now;
     }
     try {
@@ -1050,8 +1085,11 @@
         // au-delà de la Full HD demandée en "ideal") : on plafonne la largeur
         // réellement décodée pour garder un décodage rapide et fluide, sans
         // perte de fiabilité de lecture sur un code-barres (qui n'a pas besoin
-        // d'une définition supérieure à ça).
-        const MAX_DECODE_W = 1000;
+        // d'une définition supérieure à ça). Le moteur natif étant accéléré
+        // matériellement, on peut lui laisser un peu plus de définition
+        // (meilleure lecture des codes petits/éloignés) sans risquer de
+        // ralentir la cadence, contrairement au décodage logiciel zxing.
+        const MAX_DECODE_W = useNative ? 1280 : 1000;
         let outW = cropW, outH = cropH;
         if (outW > MAX_DECODE_W) {
           const s = MAX_DECODE_W / outW;
@@ -1061,18 +1099,43 @@
         canvas.width = outW; canvas.height = outH;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(els['video'], sx, sy, cropW, cropH, 0, 0, outW, outH);
-        const imageData = ctx.getImageData(0, 0, outW, outH);
-        const zx = await loadZxing();
-        const results = await zx.readBarcodesFromImageData(imageData, {
-          tryHarder: true, formats: ['EAN13', 'EAN8', 'UPCA'], maxNumberOfSymbols: 1
-        });
-        if (results && results.length && results[0].text) {
-          onBarcodeDetected(results[0].text);
-          return;
+
+        if (useNative) {
+          try {
+            // Le canvas est passé directement au moteur natif (pas besoin
+            // d'extraire un ImageData, plus coûteux en CPU) : c'est ML Kit,
+            // côté système, qui fait le décodage accéléré matériellement.
+            const results = await nativeDetector.detect(canvas);
+            if (results && results.length && results[0].rawValue) {
+              onBarcodeDetected(results[0].rawValue);
+              return;
+            }
+          } catch (e) {
+            // Le moteur natif a planté à l'exécution (rare, dépend du
+            // pilote/du téléphone) : on bascule définitivement sur zxing-wasm
+            // pour le reste de la session plutôt que de re-tenter à chaque
+            // frame — la frame en cours est retentée juste en dessous via
+            // zxing, sans perdre de cycle.
+            nativeDetectorFailed = true;
+          }
+        }
+        if (!useNative || nativeDetectorFailed) {
+          const imageData = ctx.getImageData(0, 0, outW, outH);
+          const zx = await loadZxing();
+          const results = await zx.readBarcodesFromImageData(imageData, {
+            tryHarder: true, formats: ['EAN13', 'EAN8', 'UPCA'], maxNumberOfSymbols: 1
+          });
+          if (results && results.length && results[0].text) {
+            onBarcodeDetected(results[0].text);
+            return;
+          }
         }
       }
     } catch (e) { /* on ignore les erreurs de frame isolées et on continue */ }
-    scanTimer = setTimeout(scanTick, 120);
+    // Le moteur natif étant nettement plus rapide (décodage matériel), on
+    // peut retenter beaucoup plus vite qu'avec zxing-wasm (logiciel) sans
+    // saturer le CPU du téléphone.
+    scanTimer = setTimeout(scanTick, useNative ? 60 : 120);
   }
   function resumeScanIfNeeded() {
     startCamera();
