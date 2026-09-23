@@ -124,6 +124,15 @@
   tr.ecart-missing td{color:var(--danger);}
   tr.ecart-surplus td{color:var(--accent2);}
   .pcb-line{color:var(--muted); font-size:0.95rem; margin-top:2px;}
+  /* Bloc PCB modifiable (article connu : pré-rempli + comparé à la référence
+     du bon de commande ; article inconnu : saisie obligatoire, sans référence) */
+  .pcb-block{margin-top:10px; background:#0a1826; border-radius:10px; padding:10px 12px;}
+  .pcb-block-label{font-size:0.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em;}
+  .pcb-input{width:100%; background:transparent; border:none; color:var(--accent2); font-size:1.8rem; font-weight:800; padding:4px 0;}
+  .pcb-input:focus{outline:none;}
+  .pcb-ref-note{font-size:0.8rem; color:var(--muted); margin-top:2px;}
+  .pcb-ecart-note{margin-top:4px; font-size:0.85rem; font-weight:700; color:var(--danger);}
+  .pcb-ecart-tag{color:var(--danger); font-size:0.75rem; font-weight:700;}
 </style>
 </head>
 <body>
@@ -257,10 +266,15 @@
     <span class="statut-badge" id="reception-statut-badge">Attendu</span>
     <div class="article-ean" id="reception-code">Code article —</div>
     <div class="article-libelle" id="reception-libelle">—</div>
-    <div class="pcb-line" id="reception-pcb"></div>
     <div id="reception-unknown-libelle-wrap" hidden>
       <label for="reception-manual-libelle-input">Libellé du produit (saisie manuelle)</label>
       <input type="text" id="reception-manual-libelle-input" placeholder="Ex. GLACE VANILLE 1L">
+    </div>
+    <div class="pcb-block" id="reception-pcb-block" hidden>
+      <div class="pcb-block-label">PCB (unités par colis)</div>
+      <input type="number" id="reception-pcb-input" class="pcb-input" inputmode="numeric" min="1" step="1" placeholder="—">
+      <div class="pcb-ref-note" id="reception-pcb-ref-note"></div>
+      <div class="pcb-ecart-note" id="reception-pcb-ecart-note" hidden></div>
     </div>
     <div class="reste-line" id="reception-reste"></div>
     <div id="reception-adresse-wrap">
@@ -397,6 +411,16 @@
         <tbody id="reception-surplus-tbody"></tbody>
       </table>
       <p id="reception-surplus-empty" class="help center" hidden>Aucun surplus.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Écarts de PCB (conditionnement différent du bon de commande)</h2>
+    <div class="list-scroll">
+      <table>
+        <thead><tr><th>Article</th><th>PCB attendu</th><th>PCB constaté</th></tr></thead>
+        <tbody id="reception-pcbecart-tbody"></tbody>
+      </table>
+      <p id="reception-pcbecart-empty" class="help center" hidden>Aucun écart de PCB constaté.</p>
     </div>
   </div>
   <div class="card">
@@ -655,7 +679,8 @@
    'sync-attendu-last','sync-attendu-count','btn-sync-attendu','sync-attendu-status',
    'sync-emp-last','sync-emp-count','btn-sync-emplacements','sync-emp-status',
    'btn-reception-sync-continue','btn-new-reception',
-   'reception-statut-badge','reception-code','reception-libelle','reception-pcb',
+   'reception-statut-badge','reception-code','reception-libelle',
+   'reception-pcb-block','reception-pcb-input','reception-pcb-ref-note','reception-pcb-ecart-note',
    'reception-unknown-libelle-wrap','reception-manual-libelle-input','reception-reste',
    'reception-adresse-label-1','reception-adresse-grid-1','ad1-allee','ad1-travee','ad1-niveau','ad1-rang',
    'reception-adresse-label-2','reception-adresse-grid-2','ad2-allee','ad2-travee','ad2-niveau','ad2-rang',
@@ -663,7 +688,9 @@
    'colis-input','colis-keypad','btn-colis-cancel','btn-colis-validate','btn-colis-back','btn-colis-clear',
    'rsess-nb-lignes','rsess-nb-colis','rsess-nb-surplus','rsession-tbody','rsession-empty',
    'reception-report-summary','reception-missing-tbody','reception-missing-empty',
-   'reception-surplus-tbody','reception-surplus-empty','btn-export-ecarts','btn-mail-ecarts','reception-report-result'
+   'reception-surplus-tbody','reception-surplus-empty',
+   'reception-pcbecart-tbody','reception-pcbecart-empty',
+   'btn-export-ecarts','btn-mail-ecarts','reception-report-result'
   ].forEach((id) => els[id] = document.getElementById(id));
 
   function checkPassword() {
@@ -1272,6 +1299,19 @@
       .reduce((sum, l) => sum + (Number(l.colis) || 0), 0);
   }
 
+  // Dernier PCB constaté (saisi) pour cet article dans la session en cours,
+  // pour le repréremplir si le même article est scanné plusieurs fois lors
+  // de la même réception (évite de re-signaler/re-saisir le même écart à
+  // chaque passage).
+  async function dernierPcbDeclarePourCode(codeArticle) {
+    if (!codeArticle) return null;
+    const lignes = await dbGetAll(STORE_RECEPTION);
+    const mine = lignes
+      .filter((l) => l.codeArticle === codeArticle && l.pcbDeclare)
+      .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    return mine.length ? mine[0].pcbDeclare : null;
+  }
+
   function remplirAdresseGrid(prefix, adr) {
     document.getElementById(prefix + '-allee').textContent = adr.allee || '—';
     document.getElementById(prefix + '-travee').textContent = adr.travee || '—';
@@ -1290,7 +1330,20 @@
     const libelle = attendu ? attendu.libelle : (article ? article.libelle : '');
     const emplacements = codeArticle ? await dbGetAllByIndex(STORE_EMPLACEMENTS, 'byCode', codeArticle) : [];
 
-    pendingReception = { ean, codeArticle, libelle, pcb: attendu ? attendu.pcb : '', attendu, statut };
+    // PCB de référence : uniquement disponible pour un article attendu (seule
+    // source de PCB étant la feuille "Attendu") — un article "surplus" n'a
+    // donc aucune référence à laquelle se comparer.
+    const pcbAttendu = attendu && attendu.pcb ? attendu.pcb : '';
+    // Si l'article a déjà été déclaré plus tôt dans cette même réception, on
+    // repropose le dernier PCB constaté plutôt que la référence, pour ne pas
+    // avoir à ressaisir un écart déjà signalé à chaque nouveau passage.
+    let pcbDefault = pcbAttendu;
+    if (codeArticle) {
+      const dernierPcb = await dernierPcbDeclarePourCode(codeArticle);
+      if (dernierPcb) pcbDefault = dernierPcb;
+    }
+
+    pendingReception = { ean, codeArticle, libelle, pcbAttendu, attendu, statut };
 
     // Badge de statut
     els['reception-statut-badge'].className = 'statut-badge ' + statut;
@@ -1299,7 +1352,23 @@
       statut === 'surplus' ? 'Non prévu dans cette livraison' : 'Article non reconnu';
 
     els['reception-code'].textContent = codeArticle ? ('Code article ' + codeArticle) : ('EAN ' + ean);
-    els['reception-pcb'].textContent = attendu && attendu.pcb ? ('PCB : ' + attendu.pcb + ' unité(s) / colis') : '';
+
+    // Bloc PCB : affiché et modifiable pour un article attendu (pré-rempli
+    // avec la référence du bon de commande, comparé à la saisie) ou pour un
+    // article totalement inconnu (saisie obligatoire, sans référence) ;
+    // masqué pour un article "surplus" (aucune référence PCB n'existe pour
+    // un article hors bon de commande de cette réception).
+    els['reception-pcb-ecart-note'].hidden = true;
+    if (statut === 'surplus') {
+      els['reception-pcb-block'].hidden = true;
+    } else {
+      els['reception-pcb-block'].hidden = false;
+      els['reception-pcb-input'].value = pcbDefault || '';
+      els['reception-pcb-ref-note'].textContent =
+        statut === 'inconnu' ? 'Article non reconnu : indiquez le PCB constaté sur le colis.' :
+        pcbAttendu ? ('Référence bon de commande : ' + pcbAttendu + ' unité(s)/colis') :
+        'Aucun PCB de référence pour cet article — à saisir si besoin.';
+    }
 
     if (statut === 'inconnu') {
       els['reception-libelle'].textContent = 'Article non reconnu';
@@ -1361,6 +1430,27 @@
     if (e.key === 'Enter') { e.preventDefault(); els['btn-colis-validate'].click(); }
   });
 
+  // Avertissement immédiat si le PCB constaté diffère de la référence du bon
+  // de commande (uniquement significatif pour un article "attendu", qui est
+  // le seul cas disposant d'une référence à laquelle se comparer).
+  els['reception-pcb-input'].addEventListener('input', () => {
+    if (!pendingReception || !pendingReception.pcbAttendu) {
+      els['reception-pcb-ecart-note'].hidden = true;
+      return;
+    }
+    const ref = Number(pendingReception.pcbAttendu);
+    const val = Number(els['reception-pcb-input'].value);
+    if (val && val !== ref) {
+      els['reception-pcb-ecart-note'].hidden = false;
+      els['reception-pcb-ecart-note'].textContent = 'Écart avec le PCB du bon de commande (' + ref + ') — sera signalé en "Écart de PCB".';
+    } else {
+      els['reception-pcb-ecart-note'].hidden = true;
+    }
+  });
+  els['reception-pcb-input'].addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); els['colis-input'].focus(); }
+  });
+
   function makeKeypadHandlers(inputEl, maxLen) {
     return {
       digit(d) {
@@ -1397,12 +1487,27 @@
       libelle = (els['reception-manual-libelle-input'].value || '').trim();
       if (!libelle) { els['reception-manual-libelle-input'].focus(); return; }
     }
+    // PCB : obligatoire uniquement quand il n'existe aucune référence à
+    // laquelle se rattacher (article inconnu, ou attendu sans PCB renseigné
+    // dans le bon de commande) — sinon le champ est déjà pré-rempli avec la
+    // référence et une saisie identique ne constitue pas un écart.
+    const pcbAttenduNum = pendingReception.pcbAttendu ? Number(pendingReception.pcbAttendu) : null;
+    let pcbDeclare = null;
+    if (pendingReception.statut !== 'surplus') {
+      const pcbRaw = els['reception-pcb-input'].value;
+      pcbDeclare = pcbRaw ? parseInt(pcbRaw, 10) : null;
+      if (!pcbAttenduNum && (!pcbDeclare || pcbDeclare < 1)) { els['reception-pcb-input'].focus(); return; }
+    }
+    const pcbEcart = !!(pcbAttenduNum && pcbDeclare && pcbDeclare !== pcbAttenduNum);
     await dbPut(STORE_RECEPTION, {
       codeArticle: pendingReception.codeArticle || null,
       ean: pendingReception.ean,
       libelle,
       colis,
       statut: pendingReception.statut,
+      pcbAttendu: pcbAttenduNum,
+      pcbDeclare: pcbDeclare,
+      pcbEcart,
       ts: new Date().toISOString()
     });
     pendingReception = null;
@@ -1571,7 +1676,8 @@
       const tr = document.createElement('tr');
       if (l.statut !== 'attendu') tr.className = 'unknown';
       const heure = new Date(l.ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      tr.innerHTML = '<td>' + escapeHtml(l.libelle) + (l.codeArticle ? '<br><span class="article-ean">' + l.codeArticle + '</span>' : '') + '</td>' +
+      tr.innerHTML = '<td>' + escapeHtml(l.libelle) + (l.codeArticle ? '<br><span class="article-ean">' + l.codeArticle + '</span>' : '') +
+        (l.pcbEcart ? '<br><span class="pcb-ecart-tag">⚠ Écart PCB (' + l.pcbAttendu + ' → ' + l.pcbDeclare + ')</span>' : '') + '</td>' +
         '<td><span class="qty-pill">' + l.colis + '</span></td>' +
         '<td>' + heure + '</td>' +
         '<td><button class="ghost" data-del="' + l.id + '" style="padding:6px 10px;font-size:0.8rem;">Suppr.</button></td>';
@@ -1597,6 +1703,7 @@
 
     const declareByCode = {};
     const horsAttendu = {}; // clé = codeArticle ou 'EAN:'+ean ou libellé, pour les lignes sans correspondance
+    const pcbEcartsByCode = {}; // dernier écart de PCB constaté par article (ou EAN si sans code)
     lignes.forEach((l) => {
       if (l.codeArticle && attendusByCode[l.codeArticle]) {
         declareByCode[l.codeArticle] = (declareByCode[l.codeArticle] || 0) + (Number(l.colis) || 0);
@@ -1604,6 +1711,15 @@
         const key = l.codeArticle || (l.ean ? 'EAN:' + l.ean : 'LIB:' + l.libelle);
         if (!horsAttendu[key]) horsAttendu[key] = { codeArticle: l.codeArticle || '', libelle: l.libelle, colis: 0 };
         horsAttendu[key].colis += Number(l.colis) || 0;
+      }
+      if (l.pcbEcart) {
+        const key = l.codeArticle || ('EAN:' + l.ean);
+        // On garde le constat le plus récent si l'écart a été signalé
+        // plusieurs fois pour le même article au fil de la réception.
+        const prev = pcbEcartsByCode[key];
+        if (!prev || new Date(l.ts) > new Date(prev.ts)) {
+          pcbEcartsByCode[key] = { codeArticle: l.codeArticle || '', libelle: l.libelle, pcbAttendu: l.pcbAttendu, pcbDeclare: l.pcbDeclare, ts: l.ts };
+        }
       }
     });
 
@@ -1623,13 +1739,14 @@
     });
     manquants.sort((a, b) => b.ecart - a.ecart);
     surplus.sort((a, b) => b.ecart - a.ecart);
-    return { manquants, surplus, nbAttendus: attendus.length };
+    const ecartsPCB = Object.values(pcbEcartsByCode).sort((a, b) => new Date(b.ts) - new Date(a.ts));
+    return { manquants, surplus, ecartsPCB, nbAttendus: attendus.length };
   }
 
   async function renderReceptionReport() {
-    const { manquants, surplus, nbAttendus } = await computeEcarts();
+    const { manquants, surplus, ecartsPCB, nbAttendus } = await computeEcarts();
     els['reception-report-summary'].textContent = nbAttendus
-      ? nbAttendus + ' article(s) attendu(s) au total · ' + manquants.length + ' manquant(s) · ' + surplus.length + ' écart(s) en plus.'
+      ? nbAttendus + ' article(s) attendu(s) au total · ' + manquants.length + ' manquant(s) · ' + surplus.length + ' écart(s) en plus · ' + ecartsPCB.length + ' écart(s) de PCB.'
       : 'Aucune donnée "Attendu" chargée — synchronisez la feuille Attendu avant de consulter les écarts.';
 
     els['reception-missing-tbody'].innerHTML = '';
@@ -1652,33 +1769,45 @@
       els['reception-surplus-tbody'].appendChild(tr);
     });
 
+    els['reception-pcbecart-tbody'].innerHTML = '';
+    els['reception-pcbecart-empty'].hidden = ecartsPCB.length > 0;
+    ecartsPCB.forEach((p) => {
+      const tr = document.createElement('tr');
+      tr.className = 'ecart-surplus';
+      tr.innerHTML = '<td>' + escapeHtml(p.libelle) + (p.codeArticle ? '<br><span class="article-ean">' + p.codeArticle + '</span>' : '') + '</td>' +
+        '<td>' + (p.pcbAttendu || '—') + '</td><td>' + (p.pcbDeclare || '—') + '</td>';
+      els['reception-pcbecart-tbody'].appendChild(tr);
+    });
+
     els['reception-report-result'].innerHTML = '';
   }
 
-  function buildEcartsCSV(manquants, surplus) {
-    const rows = [['Type', 'Code article', 'Libellé', 'Colis attendus', 'Colis déclarés', 'Écart']];
+  function buildEcartsCSV(manquants, surplus, ecartsPCB) {
+    const rows = [['Type', 'Code article', 'Libellé', 'Attendu', 'Déclaré', 'Écart']];
     manquants.forEach((m) => rows.push(['Manquant', m.codeArticle, m.libelle, m.attendu, m.declare, m.ecart]));
     surplus.forEach((s) => rows.push(['Surplus', s.codeArticle, s.libelle, s.attendu, s.declare, s.ecart]));
+    (ecartsPCB || []).forEach((p) => rows.push(['Écart PCB', p.codeArticle, p.libelle, p.pcbAttendu || '', p.pcbDeclare || '', '']));
     return rows.map((r) => r.map(csvEscape).join(';')).join('\r\n');
   }
 
   els['btn-export-ecarts'].addEventListener('click', async () => {
-    const { manquants, surplus } = await computeEcarts();
-    if (!manquants.length && !surplus.length) {
+    const { manquants, surplus, ecartsPCB } = await computeEcarts();
+    if (!manquants.length && !surplus.length && !ecartsPCB.length) {
       els['reception-report-result'].innerHTML = '<p class="help">Aucun écart à exporter — tout est conforme.</p>';
       return;
     }
-    const csv = buildEcartsCSV(manquants, surplus);
+    const csv = buildEcartsCSV(manquants, surplus, ecartsPCB);
     const filename = 'ecarts_reception_' + formatStamp(new Date()) + '.csv';
     downloadTextFile(filename, '﻿' + csv, 'text/csv');
     els['reception-report-result'].innerHTML = '<p class="ok">Fichier "' + filename + '" téléchargé.</p>';
   });
 
   els['btn-mail-ecarts'].addEventListener('click', async () => {
-    const { manquants, surplus } = await computeEcarts();
+    const { manquants, surplus, ecartsPCB } = await computeEcarts();
     const lignesTexte = [];
     manquants.forEach((m) => lignesTexte.push('MANQUANT - ' + m.codeArticle + ' ' + m.libelle + ' : attendu ' + m.attendu + ', déclaré ' + m.declare + ', manque ' + m.ecart));
     surplus.forEach((s) => lignesTexte.push('SURPLUS - ' + (s.codeArticle || '(non prévu)') + ' ' + s.libelle + ' : attendu ' + s.attendu + ', déclaré ' + s.declare + ', surplus ' + s.ecart));
+    ecartsPCB.forEach((p) => lignesTexte.push('ECART PCB - ' + (p.codeArticle || '(sans code)') + ' ' + p.libelle + ' : PCB attendu ' + (p.pcbAttendu || '—') + ', PCB constaté ' + (p.pcbDeclare || '—')));
     const corps = lignesTexte.length ? lignesTexte.join('\n') : 'Aucun écart constaté sur cette réception.';
     const sujet = 'Écarts réception marchandise - ' + new Date().toLocaleDateString('fr-FR');
     const url = 'mailto:?subject=' + encodeURIComponent(sujet) + '&body=' + encodeURIComponent(corps + '\n\n(Le détail complet est disponible dans le fichier CSV exporté depuis l\'application.)');
