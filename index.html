@@ -79,6 +79,8 @@
   .article-card.unknown{border-left-color:var(--accent2);}
   .article-ean{color:var(--muted); font-size:0.85rem;}
   .article-libelle{font-size:1.2rem; font-weight:700; margin:4px 0;}
+  .scan-warn{color:var(--accent2); font-weight:700; border:1px solid var(--accent2); border-radius:8px; padding:8px 10px; margin:8px 0;}
+  .ean-verify-note{color:var(--accent2); font-size:0.85rem; font-weight:600; margin:6px 0 10px;}
   .flag-unknown{display:inline-block; background:var(--accent2); color:#3a2200; font-size:0.7rem; padding:2px 8px; border-radius:999px; margin-bottom:6px;}
   table{width:100%; border-collapse:collapse; font-size:0.9rem;}
   th, td{text-align:left; padding:8px 6px; border-bottom:1px solid var(--border);}
@@ -231,6 +233,7 @@
     <div class="article-ean" id="qty-ean">EAN —</div>
     <div class="article-libelle" id="qty-libelle">—</div>
     <div id="unknown-libelle-wrap" hidden>
+      <div class="ean-verify-note">⚠ Vérifiez que le numéro EAN affiché ci-dessus est identique à celui imprimé sous le code-barres. S'il diffère, annulez et rescannez (ou saisissez l'EAN à la main).</div>
       <label for="manual-libelle-input">Libellé du produit (saisie manuelle)</label>
       <input type="text" id="manual-libelle-input" placeholder="Ex. GLACE VANILLE 1L">
     </div>
@@ -267,6 +270,7 @@
     <div class="article-ean" id="reception-code">Code article —</div>
     <div class="article-libelle" id="reception-libelle">—</div>
     <div id="reception-unknown-libelle-wrap" hidden>
+      <div class="ean-verify-note">⚠ Vérifiez que le numéro EAN affiché ci-dessus est identique à celui imprimé sous le code-barres. S'il diffère, annulez et rescannez (ou saisissez l'EAN à la main).</div>
       <label for="reception-manual-libelle-input">Libellé du produit (saisie manuelle)</label>
       <input type="text" id="reception-manual-libelle-input" placeholder="Ex. GLACE VANILLE 1L">
     </div>
@@ -1009,6 +1013,116 @@
     return zxingMod;
   }
 
+  // ============================================================
+  // ANTI-FAUSSE LECTURE (validation + consensus multi-images)
+  // ============================================================
+  // Sur un code-barres abîmé, givré ou mal imprimé, un moteur de décodage
+  // (natif ML Kit comme zxing) peut ponctuellement "inventer" un numéro
+  // voisin du vrai plutôt que d'échouer : la clé de contrôle EAN ne détecte
+  // pas toutes les erreurs (environ 1 erreur multiple sur 10 passe malgré
+  // tout). Les SDK professionnels traitent ce risque en exigeant que la même
+  // valeur soit relue sur plusieurs images successives avant de l'accepter :
+  // c'est ce qui est fait ici, sur les deux moteurs.
+  //  1. rejet de toute lecture dont le format ou la clé de contrôle GS1
+  //     (EAN-13 / EAN-8 / UPC-A) est invalide ;
+  //  2. une valeur n'est acceptée qu'après N lectures IDENTIQUES récentes,
+  //     sans lecture contradictoire entre-temps ;
+  //  3. N est plus élevé si l'EAN est inconnu de la base Articles (cas où une
+  //     fausse lecture est la plus probable) ou si des lectures
+  //     contradictoires ont été observées juste avant (code difficile) ;
+  //  4. si les lectures contradictoires se répètent, un message d'alerte
+  //     s'affiche au lieu de renvoyer un code douteux.
+  const CONSENSUS_KNOWN = 3;      // lectures identiques requises si l'EAN est connu de la base
+  const CONSENSUS_UNKNOWN = 5;    // ... si l'EAN est inconnu de la base
+  const CONSENSUS_DISPUTE_BONUS = 2; // lectures supplémentaires si contradiction récente
+  const CANDIDATE_TTL_MS = 1500;  // au-delà, une lecture précédente ne compte plus
+  const CONFLICT_WINDOW_MS = 3000;
+  const CONFLICT_ALERT = 3;       // nb de lectures contradictoires/invalides avant alerte
+
+  function isValidGtinChecksum(code) {
+    // Clé de contrôle GS1 (modulo 10, pondérations 3/1 en partant de la droite)
+    const d = code.split('').map(Number);
+    const check = d.pop();
+    let sum = 0;
+    for (let i = d.length - 1, w = 3; i >= 0; i--, w = (w === 3 ? 1 : 3)) sum += d[i] * w;
+    return (10 - (sum % 10)) % 10 === check;
+  }
+  function isPlausibleRetailCode(code) {
+    return /^\d+$/.test(code) &&
+      (code.length === 8 || code.length === 12 || code.length === 13) &&
+      isValidGtinChecksum(code);
+  }
+  // Clé de comparaison : un UPC-A (12 chiffres) et l'EAN-13 équivalent
+  // ("0" + UPC-A) désignent le même produit.
+  function consensusKey(code) { return code.length === 12 ? '0' + code : code; }
+
+  let scanCandidate = null;        // { code, key, count, last }
+  let scanConflicts = [];          // horodatages des lectures contradictoires/invalides
+  const knownEanCache = new Map();
+
+  async function isKnownEAN(code) {
+    if (knownEanCache.has(code)) return knownEanCache.get(code);
+    let known = false;
+    try { known = !!(await dbGet(STORE_ARTICLES, code)); } catch (e) {}
+    knownEanCache.set(code, known);
+    return known;
+  }
+  function setScanHint(state) {
+    const el = document.getElementById('scan-hint');
+    if (!el) return;
+    el.classList.toggle('scan-warn', state === 'warn');
+    el.textContent =
+      state === 'warn' ? '⚠ Code-barres difficile à lire : lectures contradictoires. Aucun code n\'est retenu tant que la lecture n\'est pas sûre. Rapprochez ou éloignez le téléphone, essuyez le givre, activez la torche — ou saisissez l\'EAN manuellement ci-dessous.' :
+      state === 'reading' ? 'Lecture en cours… gardez le code-barres dans le cadre.' :
+      'Visez le code-barres dans le cadre…';
+  }
+  function resetScanConsensus() {
+    scanCandidate = null;
+    scanConflicts = [];
+    setScanHint('idle');
+  }
+  function recentConflicts(now) {
+    scanConflicts = scanConflicts.filter((t) => now - t < CONFLICT_WINDOW_MS);
+    return scanConflicts.length;
+  }
+  function registerScanConflict(now) {
+    scanConflicts.push(now);
+    if (recentConflicts(now) >= CONFLICT_ALERT) setScanHint('warn');
+  }
+
+  // Reçoit les valeurs lues sur UNE image. Retourne le code accepté (lecture
+  // sûre) ou null s'il faut continuer à scanner.
+  async function processScanCandidate(rawValues) {
+    const now = performance.now();
+    const codes = rawValues.map((v) => String(v).trim());
+    // Plusieurs codes différents sur la même image : lecture ambiguë.
+    const distinct = new Set(codes.map((c) => consensusKey(normalizeEAN(c))));
+    if (distinct.size > 1) { registerScanConflict(now); return null; }
+    const code = codes[0];
+    // Toute valeur non strictement numérique, de longueur inattendue ou à
+    // clé de contrôle fausse est écartée (jamais transmise à l'appli).
+    if (!isPlausibleRetailCode(code)) { registerScanConflict(now); return null; }
+    const key = consensusKey(code);
+    if (scanCandidate && scanCandidate.key === key && now - scanCandidate.last <= CANDIDATE_TTL_MS) {
+      scanCandidate.count++;
+      scanCandidate.last = now;
+    } else {
+      if (scanCandidate && scanCandidate.key !== key && now - scanCandidate.last <= CANDIDATE_TTL_MS) {
+        registerScanConflict(now); // valeur différente de la précédente : contradiction
+      }
+      scanCandidate = { code, key, count: 1, last: now };
+    }
+    if (recentConflicts(now) < CONFLICT_ALERT) setScanHint('reading');
+    if (scanCandidate.count < CONSENSUS_KNOWN) return null;
+    const known = await isKnownEAN(code);
+    let required = known ? CONSENSUS_KNOWN : CONSENSUS_UNKNOWN;
+    if (recentConflicts(now) > 0) required += CONSENSUS_DISPUTE_BONUS;
+    if (scanCandidate.count < required) return null;
+    const accepted = scanCandidate.code;
+    resetScanConsensus();
+    return accepted;
+  }
+
   async function startCamera() {
     if (videoStream) return;
     try {
@@ -1133,9 +1247,12 @@
             // d'extraire un ImageData, plus coûteux en CPU) : c'est ML Kit,
             // côté système, qui fait le décodage accéléré matériellement.
             const results = await nativeDetector.detect(canvas);
-            if (results && results.length && results[0].rawValue) {
-              onBarcodeDetected(results[0].rawValue);
-              return;
+            const values = (results || []).map((r) => r.rawValue).filter(Boolean);
+            if (values.length) {
+              // Jamais accepté directement : passe par la validation +
+              // consensus multi-images (cf. ANTI-FAUSSE LECTURE).
+              const accepted = await processScanCandidate(values);
+              if (accepted && scanning) { onBarcodeDetected(accepted); return; }
             }
           } catch (e) {
             // Le moteur natif a planté à l'exécution (rare, dépend du
@@ -1149,12 +1266,19 @@
         if (!useNative || nativeDetectorFailed) {
           const imageData = ctx.getImageData(0, 0, outW, outH);
           const zx = await loadZxing();
+          // minLineCount 3 (au lieu de 2 par défaut) : zxing exige que davantage
+          // de lignes de balayage du code-barres concordent avant de retourner
+          // un résultat — réglage documenté pour réduire les fausses lectures.
+          // returnErrors reste à false : aucune lecture à clé de contrôle
+          // fausse n'est jamais retournée par le moteur.
           const results = await zx.readBarcodesFromImageData(imageData, {
-            tryHarder: true, formats: ['EAN13', 'EAN8', 'UPCA'], maxNumberOfSymbols: 1
+            tryHarder: true, formats: ['EAN-13', 'EAN-8', 'UPC-A'], maxNumberOfSymbols: 1,
+            minLineCount: 3, returnErrors: false
           });
-          if (results && results.length && results[0].text) {
-            onBarcodeDetected(results[0].text);
-            return;
+          const values = (results || []).filter((r) => r.isValid !== false).map((r) => r.text).filter(Boolean);
+          if (values.length) {
+            const accepted = await processScanCandidate(values);
+            if (accepted && scanning) { onBarcodeDetected(accepted); return; }
           }
         }
       }
@@ -1168,7 +1292,7 @@
     startCamera();
     if (!scanning) {
       scanning = true;
-      document.getElementById('scan-hint').textContent = 'Visez le code-barres dans le cadre…';
+      resetScanConsensus();
       scanTimer = setTimeout(scanTick, 50);
     }
   }
