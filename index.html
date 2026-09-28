@@ -89,6 +89,23 @@
   .qty-pill{background:var(--panel2); border-radius:8px; padding:2px 8px; font-variant-numeric:tabular-nums;}
   .list-scroll{max-height:50vh; overflow-y:auto;}
   .center{text-align:center;}
+  /* Chargement automatique à l'ouverture + boîtes de dialogue */
+  #dialog-overlay{z-index:1001;}
+  .overlay{position:fixed; inset:0; background:rgba(5,10,35,0.88); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px;}
+  .overlay .box{background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:20px; width:100%; max-width:440px; box-shadow:0 10px 40px rgba(0,0,0,0.5);}
+  .overlay h3{margin:0 0 10px; font-size:1.1rem;}
+  .progress{height:14px; background:#0a1826; border:1px solid var(--border); border-radius:999px; overflow:hidden; margin:12px 0 6px;}
+  .progress > div{height:100%; width:0%; background:var(--accent); transition:width 0.25s ease;}
+  .progress-pct{font-size:0.85rem; color:var(--muted); text-align:right;}
+  .load-steps{list-style:none; padding:0; margin:12px 0; display:flex; flex-direction:column; gap:8px; font-size:0.92rem;}
+  .load-steps li{display:flex; gap:10px; align-items:flex-start;}
+  .load-steps .ico{width:22px; flex:0 0 22px; text-align:center;}
+  .load-steps .detail{color:var(--muted); font-size:0.82rem; display:block;}
+  .load-steps li.ok .ico{color:var(--accent);}
+  .load-steps li.warn .ico{color:var(--accent2);}
+  .load-steps li.err .ico{color:#ff6b6b;}
+  .dialog-msg{white-space:pre-line; color:var(--text); font-size:0.95rem; line-height:1.4;}
+  .dialog-btns{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
   .spinner{width:34px; height:34px; border:4px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto;}
   @keyframes spin{to{transform:rotate(360deg);}}
   .summary-line{display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--border);}
@@ -460,6 +477,31 @@
 </div>
 <footer class="small">Inventaire Surgelé · 123-Click / Groupe Créo</footer>
 
+<!-- ============ Chargement automatique des données à l'ouverture ============ -->
+<div class="overlay" id="autoload-overlay" hidden>
+  <div class="box">
+    <h3>Mise à jour des données…</h3>
+    <p class="help">Téléchargement de la base articles, de l'attendu et des emplacements depuis le Google Sheet.</p>
+    <div class="progress"><div id="autoload-bar"></div></div>
+    <div class="progress-pct" id="autoload-pct">0 %</div>
+    <ul class="load-steps">
+      <li id="al-step-articles"><span class="ico">⏳</span><span>Base articles<span class="detail">En attente…</span></span></li>
+      <li id="al-step-attendu"><span class="ico">⏳</span><span>Attendu (bon de commande)<span class="detail">En attente…</span></span></li>
+      <li id="al-step-emplacements"><span class="ico">⏳</span><span>Emplacements<span class="detail">En attente…</span></span></li>
+    </ul>
+    <button class="secondary" id="btn-autoload-skip" style="width:100%">Continuer avec les données actuelles</button>
+  </div>
+</div>
+
+<!-- ============ Boîte de dialogue générique ============ -->
+<div class="overlay" id="dialog-overlay" hidden>
+  <div class="box">
+    <h3 id="dialog-title"></h3>
+    <div class="dialog-msg" id="dialog-msg"></div>
+    <div class="dialog-btns" id="dialog-btns"></div>
+  </div>
+</div>
+
 <script>
 (function(){
   'use strict';
@@ -694,7 +736,8 @@
    'reception-report-summary','reception-missing-tbody','reception-missing-empty',
    'reception-surplus-tbody','reception-surplus-empty',
    'reception-pcbecart-tbody','reception-pcbecart-empty',
-   'btn-export-ecarts','btn-mail-ecarts','reception-report-result'
+   'btn-export-ecarts','btn-mail-ecarts','reception-report-result',
+   'autoload-overlay','autoload-bar','autoload-pct','btn-autoload-skip','dialog-overlay','dialog-title','dialog-msg','dialog-btns'
   ].forEach((id) => els[id] = document.getElementById(id));
 
   function checkPassword() {
@@ -715,6 +758,8 @@
     els['bottom-nav'].hidden = true;
     els['bottom-nav-reception'].hidden = true;
     showScreen('screen-mode');
+    // Chargement automatique des 3 fichiers (au plus toutes les 5 h)
+    try { await maybeAutoLoad(); } catch (e) { els['autoload-overlay'].hidden = true; }
   }
 
   // ============================================================
@@ -770,59 +815,172 @@
   window.addEventListener('online', refreshBadges);
   window.addEventListener('offline', refreshBadges);
 
+  // ------------------------------------------------------------
+  // Lecture / analyse / enregistrement des 3 fichiers, séparés pour être
+  // partagés entre les boutons de chargement manuel et le chargement
+  // automatique à l'ouverture (qui télécharge d'abord les 3 fichiers, les
+  // contrôle, et n'écrit sur le téléphone qu'ensuite).
+  // ------------------------------------------------------------
+  const MIN_ARTICLES = 1000; // en dessous : base du Google Sheet jugée anormale
+
+  async function fetchText(url, onBytes, signal) {
+    const resp = await fetch(url, { cache: 'no-store', signal });
+    if (!resp.ok) throw new Error('Erreur réseau (HTTP ' + resp.status + ')');
+    if (!resp.body || !resp.body.getReader || !onBytes) return await resp.text();
+    const reader = resp.body.getReader();
+    const chunks = []; let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); received += value.length;
+      onBytes(received);
+    }
+    const all = new Uint8Array(received); let pos = 0;
+    for (const c of chunks) { all.set(c, pos); pos += c.length; }
+    return new TextDecoder('utf-8').decode(all);
+  }
+
+  function parseArticlesCSV(text) {
+    const rows = parseCSV(text);
+    if (!rows.length) throw new Error('Fichier vide ou illisible.');
+    const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+    const idxEAN = header.findIndex((h) => h.indexOf('ean') !== -1);
+    let idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
+    // Certaines versions du fichier ont DEUX colonnes contenant "libell"
+    // (ex. une colonne "Libellé" qui contient en réalité un code article,
+    // et une colonne "Libellé article" qui contient le vrai nom du
+    // produit). Dans ce cas on privilégie celle dont l'en-tête précise
+    // "article" comme étant le vrai libellé, et on utilise l'autre comme
+    // code article si aucune colonne "code" n'a été trouvée par ailleurs.
+    const libellIdxs = [];
+    header.forEach((h, i) => { if (h.indexOf('libell') !== -1) libellIdxs.push(i); });
+    let idxLib = -1;
+    if (libellIdxs.length === 1) {
+      idxLib = libellIdxs[0];
+    } else if (libellIdxs.length > 1) {
+      const withArticle = libellIdxs.find((i) => header[i].indexOf('article') !== -1);
+      idxLib = withArticle !== undefined ? withArticle : libellIdxs[0];
+      if (idxCode === -1) {
+        const other = libellIdxs.find((i) => i !== idxLib);
+        if (other !== undefined) idxCode = other;
+      }
+    }
+    if (idxEAN === -1 || idxLib === -1) throw new Error('Colonnes EAN / Libellé introuvables dans le Google Sheet.');
+    // Le Google Sheet peut contenir plusieurs lignes pour un même EAN
+    // (doublons d'import, historique, etc.) : on ne garde qu'une entrée
+    // par EAN (la dernière rencontrée).
+    const byEAN = new Map();
+    let totalRowsLues = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const ean = normalizeEAN(r[idxEAN]);
+      const libelle = (r[idxLib] || '').trim();
+      const codeArticle = idxCode !== -1 ? (r[idxCode] || '').trim() : '';
+      if (ean && libelle) { byEAN.set(ean, { ean, codeArticle, libelle }); totalRowsLues++; }
+    }
+    const items = Array.from(byEAN.values());
+    if (!items.length) throw new Error('Aucun article valide trouvé.');
+    return { items, totalRowsLues };
+  }
+  async function storeArticles(items, onProgress) {
+    await dbClear(STORE_ARTICLES);
+    await dbPutAll(STORE_ARTICLES, items, onProgress);
+    await dbPut(STORE_META, { key: 'lastSync', value: new Date().toISOString() });
+    await dbPut(STORE_META, { key: 'nbArticles', value: items.length });
+    knownEanCache.clear();
+  }
+
+  function parseAttenduCSV(text) {
+    const rows = parseCSV(text);
+    if (!rows.length) throw new Error('Feuille "Attendu" vide ou illisible.');
+    const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+    const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
+    const idxLib = header.findIndex((h) => h.indexOf('libell') !== -1);
+    const idxPCB = header.findIndex((h) => h.trim() === 'pcb' || h.indexOf('pcb') !== -1);
+    const idxNbUC = header.findIndex((h) => h.indexOf('nb uc') !== -1 || h.indexOf('nbuc') !== -1);
+    const idxColis = header.findIndex((h) => h.indexOf('colis') !== -1);
+    if (idxCode === -1 || idxLib === -1) throw new Error('Colonnes Code article / Libellé introuvables dans la feuille "Attendu".');
+    const items = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const codeArticle = normalizeCode(r[idxCode]);
+      const libelle = (r[idxLib] || '').trim();
+      if (!codeArticle || !libelle) continue;
+      const pcb = idxPCB !== -1 ? normalizeCode(r[idxPCB]) : '';
+      const nbUC = idxNbUC !== -1 ? normalizeCode(r[idxNbUC]) : '';
+      let colisAttendus = idxColis !== -1 ? normalizeCode(r[idxColis]) : '';
+      if (!colisAttendus && nbUC && pcb && Number(pcb) > 0) {
+        colisAttendus = String(Number(nbUC) / Number(pcb));
+      }
+      items.push({ codeArticle, libelle, pcb, nbUC, colisAttendus: colisAttendus || '0' });
+    }
+    if (!items.length) throw new Error('Aucun article attendu trouvé.');
+    return items;
+  }
+  async function storeAttendu(items) {
+    await dbClear(STORE_ATTENDU);
+    await dbPutAll(STORE_ATTENDU, items);
+    await dbPut(STORE_META, { key: 'lastSyncAttendu', value: new Date().toISOString() });
+    await dbPut(STORE_META, { key: 'nbAttendu', value: items.length });
+  }
+
+  function parseEmplacementsCSV(text) {
+    const rows = parseCSV(text);
+    if (!rows.length) throw new Error('Feuille "Emplacements" vide ou illisible.');
+    const header = rows[0].map((h) => (h || '').trim().toLowerCase());
+    const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
+    const idxAllee = header.findIndex((h) => h.indexOf('all') !== -1);
+    const idxTravee = header.findIndex((h) => h.indexOf('trav') !== -1);
+    const idxNiveau = header.findIndex((h) => h.indexOf('niveau') !== -1);
+    const idxRang = header.findIndex((h) => h.indexOf('rang') !== -1);
+    if (idxCode === -1) throw new Error('Colonne Code article introuvable dans la feuille "Emplacements".');
+    const items = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const codeArticle = normalizeCode(r[idxCode]);
+      if (!codeArticle) continue;
+      items.push({
+        codeArticle,
+        allee: idxAllee !== -1 ? (r[idxAllee] || '').trim() : '',
+        travee: idxTravee !== -1 ? normalizeCode(r[idxTravee]) : '',
+        niveau: idxNiveau !== -1 ? normalizeCode(r[idxNiveau]) : '',
+        rang: idxRang !== -1 ? normalizeCode(r[idxRang]) : ''
+      });
+    }
+    if (!items.length) throw new Error('Aucun emplacement trouvé.');
+    return items;
+  }
+  async function storeEmplacements(items) {
+    await dbClear(STORE_EMPLACEMENTS);
+    await dbPutAll(STORE_EMPLACEMENTS, items);
+    await dbPut(STORE_META, { key: 'lastSyncEmplacements', value: new Date().toISOString() });
+    await dbPut(STORE_META, { key: 'nbEmplacements', value: items.length });
+  }
+
   async function syncArticles() {
     els['btn-sync'].disabled = true;
     els['sync-status'].innerHTML = '<div class="spinner"></div><p class="help center">Téléchargement de la base articles…</p>';
     try {
-      const resp = await fetch(SYNC_URL, { cache: 'no-store' });
-      if (!resp.ok) throw new Error('Erreur réseau (HTTP ' + resp.status + ')');
-      const text = await resp.text();
-      const rows = parseCSV(text);
-      if (!rows.length) throw new Error('Fichier vide ou illisible.');
-      const header = rows[0].map((h) => (h || '').trim().toLowerCase());
-      const idxEAN = header.findIndex((h) => h.indexOf('ean') !== -1);
-      let idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
-      // Certaines versions du fichier ont DEUX colonnes contenant "libell"
-      // (ex. une colonne "Libellé" qui contient en réalité un code article,
-      // et une colonne "Libellé article" qui contient le vrai nom du
-      // produit). Dans ce cas on privilégie celle dont l'en-tête précise
-      // "article" comme étant le vrai libellé, et on utilise l'autre comme
-      // code article si aucune colonne "code" n'a été trouvée par ailleurs.
-      const libellIdxs = [];
-      header.forEach((h, i) => { if (h.indexOf('libell') !== -1) libellIdxs.push(i); });
-      let idxLib = -1;
-      if (libellIdxs.length === 1) {
-        idxLib = libellIdxs[0];
-      } else if (libellIdxs.length > 1) {
-        const withArticle = libellIdxs.find((i) => header[i].indexOf('article') !== -1);
-        idxLib = withArticle !== undefined ? withArticle : libellIdxs[0];
-        if (idxCode === -1) {
-          const other = libellIdxs.find((i) => i !== idxLib);
-          if (other !== undefined) idxCode = other;
+      const text = await fetchText(SYNC_URL);
+      const { items, totalRowsLues } = parseArticlesCSV(text);
+      // Garde-fou : une base anormalement petite (Google Sheet vidé ou
+      // tronqué par erreur) ne remplace pas la base du téléphone sans
+      // confirmation explicite.
+      if (items.length < MIN_ARTICLES) {
+        const cur = await dbGet(STORE_META, 'nbArticles');
+        const curNb = cur && cur.value ? cur.value : 0;
+        if (!(await showDialog({
+          title: 'Base articles anormalement petite',
+          message: 'Le Google Sheet ne contient que ' + items.length + ' article(s), contre ' + curNb + ' actuellement sur ce téléphone. Le fichier a peut-être été vidé par erreur.\n\nRemplacer quand même la base du téléphone ?',
+          buttons: [{ label: 'Garder la base actuelle', value: false, cls: 'secondary' }, { label: 'Remplacer', value: true, cls: 'danger' }]
+        }))) {
+          els['sync-status'].innerHTML = '<p class="err">Synchronisation annulée : base du téléphone conservée (' + curNb + ' articles).</p>';
+          return;
         }
       }
-      if (idxEAN === -1 || idxLib === -1) throw new Error('Colonnes EAN / Libellé introuvables dans le Google Sheet.');
-      // Le Google Sheet peut contenir plusieurs lignes pour un même EAN
-      // (doublons d'import, historique, etc.) : on ne garde qu'une entrée
-      // par EAN (la dernière rencontrée) pour ne pas écrire inutilement
-      // 3 à 4 fois plus de lignes que d'articles réels dans IndexedDB.
-      const byEAN = new Map();
-      let totalRowsLues = 0;
-      for (let i = 1; i < rows.length; i++) {
-        const r = rows[i];
-        const ean = normalizeEAN(r[idxEAN]);
-        const libelle = (r[idxLib] || '').trim();
-        const codeArticle = idxCode !== -1 ? (r[idxCode] || '').trim() : '';
-        if (ean && libelle) { byEAN.set(ean, { ean, codeArticle, libelle }); totalRowsLues++; }
-      }
-      const items = Array.from(byEAN.values());
-      if (!items.length) throw new Error('Aucun article valide trouvé.');
-      await dbClear(STORE_ARTICLES);
-      await dbPutAll(STORE_ARTICLES, items, (done, total) => {
+      await storeArticles(items, (done, total) => {
         els['sync-status'].innerHTML = '<div class="spinner"></div><p class="help center">Enregistrement des articles… ' + done + ' / ' + total + '</p>';
       });
-      await dbPut(STORE_META, { key: 'lastSync', value: new Date().toISOString() });
-      await dbPut(STORE_META, { key: 'nbArticles', value: items.length });
       els['sync-status'].innerHTML = '<p class="ok">' + items.length + ' articles chargés avec succès'
         + (totalRowsLues > items.length ? ' (' + totalRowsLues + ' lignes lues dans le fichier, doublons EAN fusionnés)' : '') + '.</p>';
       await refreshSyncInfo();
@@ -854,37 +1012,12 @@
     els['btn-sync-attendu'].disabled = true;
     els['sync-attendu-status'].innerHTML = '<div class="spinner"></div><p class="help center">Téléchargement de l\'attendu…</p>';
     try {
-      const resp = await fetch(SYNC_URL_ATTENDU, { cache: 'no-store' });
-      if (!resp.ok) throw new Error('Erreur réseau (HTTP ' + resp.status + ')');
-      const text = await resp.text();
-      const rows = parseCSV(text);
-      if (!rows.length) throw new Error('Feuille "Attendu" vide ou illisible.');
-      const header = rows[0].map((h) => (h || '').trim().toLowerCase());
-      const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
-      const idxLib = header.findIndex((h) => h.indexOf('libell') !== -1);
-      const idxPCB = header.findIndex((h) => h.trim() === 'pcb' || h.indexOf('pcb') !== -1);
-      const idxNbUC = header.findIndex((h) => h.indexOf('nb uc') !== -1 || h.indexOf('nbuc') !== -1);
-      const idxColis = header.findIndex((h) => h.indexOf('colis') !== -1);
-      if (idxCode === -1 || idxLib === -1) throw new Error('Colonnes Code article / Libellé introuvables dans la feuille "Attendu".');
-      const items = [];
-      for (let i = 1; i < rows.length; i++) {
-        const r = rows[i];
-        const codeArticle = normalizeCode(r[idxCode]);
-        const libelle = (r[idxLib] || '').trim();
-        if (!codeArticle || !libelle) continue;
-        const pcb = idxPCB !== -1 ? normalizeCode(r[idxPCB]) : '';
-        const nbUC = idxNbUC !== -1 ? normalizeCode(r[idxNbUC]) : '';
-        let colisAttendus = idxColis !== -1 ? normalizeCode(r[idxColis]) : '';
-        if (!colisAttendus && nbUC && pcb && Number(pcb) > 0) {
-          colisAttendus = String(Number(nbUC) / Number(pcb));
-        }
-        items.push({ codeArticle, libelle, pcb, nbUC, colisAttendus: colisAttendus || '0' });
+      const items = parseAttenduCSV(await fetchText(SYNC_URL_ATTENDU));
+      if (!(await confirmAttenduChange(items))) {
+        els['sync-attendu-status'].innerHTML = '<p class="help">Réception en cours conservée : l\'ancien bon de commande reste chargé.</p>';
+        return;
       }
-      if (!items.length) throw new Error('Aucun article attendu trouvé.');
-      await dbClear(STORE_ATTENDU);
-      await dbPutAll(STORE_ATTENDU, items);
-      await dbPut(STORE_META, { key: 'lastSyncAttendu', value: new Date().toISOString() });
-      await dbPut(STORE_META, { key: 'nbAttendu', value: items.length });
+      await storeAttendu(items);
       els['sync-attendu-status'].innerHTML = '<p class="ok">' + items.length + ' articles attendus chargés avec succès.</p>';
       await refreshReceptionSyncInfo();
       await refreshBadges();
@@ -899,36 +1032,8 @@
     els['btn-sync-emplacements'].disabled = true;
     els['sync-emp-status'].innerHTML = '<div class="spinner"></div><p class="help center">Téléchargement des emplacements…</p>';
     try {
-      const resp = await fetch(SYNC_URL_EMPLACEMENTS, { cache: 'no-store' });
-      if (!resp.ok) throw new Error('Erreur réseau (HTTP ' + resp.status + ')');
-      const text = await resp.text();
-      const rows = parseCSV(text);
-      if (!rows.length) throw new Error('Feuille "Emplacements" vide ou illisible.');
-      const header = rows[0].map((h) => (h || '').trim().toLowerCase());
-      const idxCode = header.findIndex((h) => h.indexOf('code') !== -1);
-      const idxAllee = header.findIndex((h) => h.indexOf('all') !== -1);
-      const idxTravee = header.findIndex((h) => h.indexOf('trav') !== -1);
-      const idxNiveau = header.findIndex((h) => h.indexOf('niveau') !== -1);
-      const idxRang = header.findIndex((h) => h.indexOf('rang') !== -1);
-      if (idxCode === -1) throw new Error('Colonne Code article introuvable dans la feuille "Emplacements".');
-      const items = [];
-      for (let i = 1; i < rows.length; i++) {
-        const r = rows[i];
-        const codeArticle = normalizeCode(r[idxCode]);
-        if (!codeArticle) continue;
-        items.push({
-          codeArticle,
-          allee: idxAllee !== -1 ? (r[idxAllee] || '').trim() : '',
-          travee: idxTravee !== -1 ? normalizeCode(r[idxTravee]) : '',
-          niveau: idxNiveau !== -1 ? normalizeCode(r[idxNiveau]) : '',
-          rang: idxRang !== -1 ? normalizeCode(r[idxRang]) : ''
-        });
-      }
-      if (!items.length) throw new Error('Aucun emplacement trouvé.');
-      await dbClear(STORE_EMPLACEMENTS);
-      await dbPutAll(STORE_EMPLACEMENTS, items);
-      await dbPut(STORE_META, { key: 'lastSyncEmplacements', value: new Date().toISOString() });
-      await dbPut(STORE_META, { key: 'nbEmplacements', value: items.length });
+      const items = parseEmplacementsCSV(await fetchText(SYNC_URL_EMPLACEMENTS));
+      await storeEmplacements(items);
       els['sync-emp-status'].innerHTML = '<p class="ok">' + items.length + ' adresses chargées avec succès.</p>';
       await refreshReceptionSyncInfo();
     } catch (e) {
@@ -949,6 +1054,233 @@
     els['sync-emp-status'].innerHTML = '';
     alert('Déclarations vidées.');
   });
+
+
+  // ============================================================
+  // BOÎTE DE DIALOGUE GÉNÉRIQUE (remplace alert/confirm natifs)
+  // ============================================================
+  function showDialog({ title, message, buttons }) {
+    return new Promise((resolve) => {
+      els['dialog-title'].textContent = title || '';
+      els['dialog-msg'].textContent = message || '';
+      const wrap = els['dialog-btns'];
+      wrap.innerHTML = '';
+      (buttons && buttons.length ? buttons : [{ label: 'OK', value: true, cls: 'primary' }]).forEach((b) => {
+        const btn = document.createElement('button');
+        btn.className = b.cls || 'primary';
+        btn.textContent = b.label;
+        btn.addEventListener('click', () => { els['dialog-overlay'].hidden = true; resolve(b.value); });
+        wrap.appendChild(btn);
+      });
+      els['dialog-overlay'].hidden = false;
+    });
+  }
+
+  // Réception en cours + bon de commande différent : l'utilisateur choisit
+  // de garder l'ancien attendu (finir la réception) ou d'en démarrer une
+  // nouvelle (déclarations vidées). Retourne true si le nouvel attendu peut
+  // être enregistré.
+  async function confirmAttenduChange(newItems) {
+    const lignes = await dbGetAll(STORE_RECEPTION);
+    if (!lignes.length) return true;
+    const cur = await dbGetAll(STORE_ATTENDU);
+    const sig = (arr) => arr.map((a) => [a.codeArticle, a.colisAttendus, a.pcb].join('|')).sort().join(';');
+    if (sig(cur) === sig(newItems)) return true;
+    const choix = await showDialog({
+      title: 'Nouveau bon de commande',
+      message: 'Le bon de commande (Attendu) a changé alors qu\'une réception est en cours sur ce téléphone ('
+        + lignes.length + ' déclaration(s) de colis).\n\nCharger le nouveau bon de commande fausserait le calcul des écarts de la réception en cours. '
+        + 'Pour le charger, il faut démarrer une nouvelle réception : vos déclarations actuelles seront vidées (pensez à exporter les écarts avant si besoin).',
+      buttons: [
+        { label: 'Terminer la réception en cours (garder l\'ancien bon de commande)', value: 'keep', cls: 'primary' },
+        { label: 'Démarrer une nouvelle réception (vider mes déclarations)', value: 'new', cls: 'danger' }
+      ]
+    });
+    if (choix === 'new') { await dbClear(STORE_RECEPTION); return true; }
+    return false;
+  }
+
+  // ============================================================
+  // CHARGEMENT AUTOMATIQUE DES 3 FICHIERS À L'OUVERTURE
+  // ============================================================
+  // Principe : on télécharge d'abord les 3 feuilles ; si le réseau manque
+  // ou si l'utilisateur choisit de continuer sans attendre, rien n'est
+  // modifié sur le téléphone. Chaque fichier est ensuite contrôlé avant
+  // d'être enregistré (une base articles anormalement petite n'écrase pas
+  // celle du téléphone). Pas de nouveau chargement si le dernier chargement
+  // automatique réussi date de moins de 5 heures.
+  const AUTOLOAD_DELAY_MS = 5 * 60 * 60 * 1000;
+  let autoloadCtrl = null;
+  let autoloadSkipped = false;
+
+  function fmtDate(meta) { return meta && meta.value ? new Date(meta.value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'jamais'; }
+  async function dataSummary() {
+    const g = (k) => dbGet(STORE_META, k);
+    const [nA, dA, nT, dT, nE, dE] = await Promise.all([g('nbArticles'), g('lastSync'), g('nbAttendu'), g('lastSyncAttendu'), g('nbEmplacements'), g('lastSyncEmplacements')]);
+    const v = (m) => (m && m.value ? m.value : 0);
+    return '• Base articles : ' + v(nA) + ' articles (du ' + fmtDate(dA) + ')\n'
+      + '• Attendu : ' + v(nT) + ' articles attendus (du ' + fmtDate(dT) + ')\n'
+      + '• Emplacements : ' + v(nE) + ' adresses (du ' + fmtDate(dE) + ')';
+  }
+  function setLoadStep(key, state, detail) {
+    const li = document.getElementById('al-step-' + key);
+    if (!li) return;
+    li.className = state === 'ok' ? 'ok' : state === 'warn' ? 'warn' : state === 'err' ? 'err' : '';
+    li.querySelector('.ico').textContent = state === 'ok' ? '✔' : state === 'warn' ? '⚠' : state === 'err' ? '✖' : state === 'run' ? '⬇' : '⏳';
+    li.querySelector('.detail').textContent = detail || '';
+  }
+  function setLoadProgress(pct) {
+    const p = Math.max(0, Math.min(100, Math.round(pct)));
+    els['autoload-bar'].style.width = p + '%';
+    els['autoload-pct'].textContent = p + ' %';
+  }
+  els['btn-autoload-skip'].addEventListener('click', () => {
+    autoloadSkipped = true;
+    if (autoloadCtrl) autoloadCtrl.abort();
+    els['autoload-overlay'].hidden = true;
+  });
+
+  async function maybeAutoLoad() {
+    const [last, nbA] = await Promise.all([dbGet(STORE_META, 'lastAutoLoad'), dbGet(STORE_META, 'nbArticles')]);
+    const hasData = !!(nbA && nbA.value);
+    if (hasData && last && last.value && Date.now() - new Date(last.value).getTime() < AUTOLOAD_DELAY_MS) return;
+    if (!navigator.onLine) {
+      await showDialog({
+        title: 'Hors ligne',
+        message: hasData
+          ? 'Pas de réseau : les données déjà présentes sur ce téléphone sont utilisées.\n\n' + await dataSummary()
+          : 'Pas de réseau et aucune donnée sur ce téléphone. Connectez-vous à un réseau puis relancez l\'appli, ou utilisez les boutons de chargement manuel.'
+      });
+      return;
+    }
+    await autoLoadAll();
+  }
+
+  async function autoLoadAll() {
+    autoloadSkipped = false;
+    autoloadCtrl = new AbortController();
+    ['articles', 'attendu', 'emplacements'].forEach((k) => setLoadStep(k, 'wait', 'En attente…'));
+    setLoadProgress(0);
+    els['btn-autoload-skip'].hidden = false;
+    els['autoload-overlay'].hidden = false;
+
+    // --- 1. Téléchargement des 3 feuilles (en parallèle) : 0 → 50 % ---
+    const files = [
+      { key: 'articles', url: SYNC_URL, w: 42, def: 3500000 },
+      { key: 'attendu', url: SYNC_URL_ATTENDU, w: 3, def: 10000 },
+      { key: 'emplacements', url: SYNC_URL_EMPLACEMENTS, w: 5, def: 150000 }
+    ];
+    for (const f of files) {
+      const m = await dbGet(STORE_META, 'size_' + f.key);
+      f.expected = m && m.value ? m.value : f.def;
+      f.got = 0;
+    }
+    const refreshDl = () => setLoadProgress(files.reduce((acc, f) => acc + f.w * Math.min(1, f.got / f.expected), 0));
+    let texts;
+    try {
+      texts = await Promise.all(files.map((f) => {
+        setLoadStep(f.key, 'run', 'Téléchargement…');
+        return fetchText(f.url, (b) => {
+          f.got = b; refreshDl();
+          setLoadStep(f.key, 'run', 'Téléchargement… ' + (b / 1048576).toFixed(1) + ' Mo');
+        }, autoloadCtrl.signal).then((t) => {
+          f.got = f.expected; refreshDl();
+          setLoadStep(f.key, 'run', 'Téléchargé, en attente d\'enregistrement…');
+          return t;
+        });
+      }));
+    } catch (e) {
+      els['autoload-overlay'].hidden = true;
+      if (autoloadSkipped) return; // l'utilisateur a choisi de continuer sans attendre
+      await showDialog({
+        title: 'Chargement impossible',
+        message: 'Les données n\'ont pas pu être téléchargées (' + (e.message || e) + ').\nRien n\'a été modifié : les données déjà présentes sur ce téléphone sont utilisées.\n\n' + await dataSummary()
+      });
+      return;
+    }
+    if (autoloadSkipped) return;
+    for (let i = 0; i < files.length; i++) await dbPut(STORE_META, { key: 'size_' + files[i].key, value: texts[i].length });
+
+    // --- 2. Contrôle puis enregistrement sur le téléphone : 50 → 100 % ---
+    // (plus d'abandon possible à ce stade : l'écriture ne doit pas être coupée)
+    els['btn-autoload-skip'].hidden = true;
+    setLoadProgress(50);
+    const warnings = [];
+    let userKeptReception = false;
+    const res = {};
+
+    // Base articles
+    try {
+      const { items } = parseArticlesCSV(texts[0]);
+      const cur = await dbGet(STORE_META, 'nbArticles');
+      if (items.length < MIN_ARTICLES) {
+        warnings.push('Base articles : le Google Sheet ne contient que ' + items.length + ' article(s) — base du téléphone conservée (' + (cur && cur.value ? cur.value : 0) + ' articles). Vérifiez la feuille Articles.');
+        setLoadStep('articles', 'warn', 'Fichier anormalement petit : base actuelle conservée');
+      } else {
+        await storeArticles(items, (done, total) => {
+          setLoadProgress(50 + 40 * done / total);
+          setLoadStep('articles', 'run', 'Enregistrement… ' + done + ' / ' + total);
+        });
+        res.articles = items.length;
+        setLoadStep('articles', 'ok', items.length + ' articles');
+      }
+    } catch (e) {
+      warnings.push('Base articles : ' + (e.message || e) + ' — base du téléphone conservée.');
+      setLoadStep('articles', 'err', e.message || String(e));
+    }
+    setLoadProgress(90);
+
+    // Attendu
+    try {
+      const items = parseAttenduCSV(texts[1]);
+      if (await confirmAttenduChange(items)) {
+        await storeAttendu(items);
+        res.attendu = items.length;
+        setLoadStep('attendu', 'ok', items.length + ' articles attendus');
+      } else {
+        userKeptReception = true;
+        setLoadStep('attendu', 'warn', 'Réception en cours conservée (ancien bon de commande)');
+      }
+    } catch (e) {
+      warnings.push('Attendu : ' + (e.message || e) + ' — attendu du téléphone conservé.');
+      setLoadStep('attendu', 'err', e.message || String(e));
+    }
+    setLoadProgress(94);
+
+    // Emplacements
+    try {
+      const items = parseEmplacementsCSV(texts[2]);
+      await storeEmplacements(items);
+      res.emplacements = items.length;
+      setLoadStep('emplacements', 'ok', items.length + ' adresses');
+    } catch (e) {
+      warnings.push('Emplacements : ' + (e.message || e) + ' — emplacements du téléphone conservés.');
+      setLoadStep('emplacements', 'err', e.message || String(e));
+    }
+    setLoadProgress(100);
+
+    // Le délai de 5 h ne démarre que si les 3 fichiers sont corrects
+    // (sinon on retentera à la prochaine ouverture).
+    if (!warnings.length) await dbPut(STORE_META, { key: 'lastAutoLoad', value: new Date().toISOString() });
+    await refreshSyncInfo();
+    await refreshReceptionSyncInfo();
+    await refreshBadges();
+    els['autoload-overlay'].hidden = true;
+
+    if (!warnings.length && !userKeptReception) {
+      await showDialog({
+        title: 'Données à jour',
+        message: 'Les 3 fichiers ont été chargés :\n\n• Base articles : ' + res.articles + ' articles\n• Attendu : ' + res.attendu + ' articles attendus\n• Emplacements : ' + res.emplacements + ' adresses'
+      });
+    } else {
+      await showDialog({
+        title: warnings.length ? 'Chargement partiel' : 'Données à jour',
+        message: (warnings.length ? warnings.join('\n\n') + '\n\n' : '')
+          + (userKeptReception ? 'Attendu : la réception en cours a été conservée avec l\'ancien bon de commande.\n\n' : '')
+          + 'Données actuellement sur le téléphone :\n' + await dataSummary()
+      });
+    }
+  }
 
   // ============================================================
   // NAVIGATION BAS DE PAGE
