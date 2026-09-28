@@ -637,6 +637,23 @@
     if (!raw) return '';
     return String(raw).replace(/[^0-9]/g, '');
   }
+  // Clé de recherche dans la base Articles : EAN sans ses zéros de tête.
+  // La feuille Google "Articles" stocke les EAN sans zéro de tête
+  // (ex. 0012345678905 -> 12345678905), alors que le scanner renvoie
+  // l'EAN complet (EAN-13, UPC-A, EAN-8). En retirant les zéros de tête
+  // des deux côtés, un même produit est retrouvé quel que soit le format
+  // (norme GS1 : les zéros de tête ne changent pas le GTIN).
+  function eanKey(raw) {
+    return normalizeEAN(raw).replace(/^0+/, '');
+  }
+  async function findArticle(ean) {
+    const key = eanKey(ean);
+    if (!key) return null;
+    let a = await dbGet(STORE_ARTICLES, key);
+    // Repli : base locale synchronisée avant cette version (clé brute).
+    if (!a && key !== ean) a = await dbGet(STORE_ARTICLES, ean);
+    return a || null;
+  }
   // Nettoie un "Code article" lu depuis un fichier Excel/Google Sheets : les
   // valeurs numériques peuvent arriver avec un ".0" final (lecture en
   // nombre flottant), qu'il faut retirer pour que la clé de rapprochement
@@ -873,7 +890,7 @@
     let totalRowsLues = 0;
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
-      const ean = normalizeEAN(r[idxEAN]);
+      const ean = eanKey(r[idxEAN]);
       const libelle = (r[idxLib] || '').trim();
       const codeArticle = idxCode !== -1 ? (r[idxCode] || '').trim() : '';
       if (ean && libelle) { byEAN.set(ean, { ean, codeArticle, libelle }); totalRowsLues++; }
@@ -1395,7 +1412,7 @@
   async function isKnownEAN(code) {
     if (knownEanCache.has(code)) return knownEanCache.get(code);
     let known = false;
-    try { known = !!(await dbGet(STORE_ARTICLES, code)); } catch (e) {}
+    try { known = !!(await findArticle(code)); } catch (e) {}
     knownEanCache.set(code, known);
     return known;
   }
@@ -1652,7 +1669,7 @@
   // ÉCRAN QUANTITÉ (article reconnu ou non)
   // ============================================================
   async function handleScannedEAN(ean) {
-    const article = await dbGet(STORE_ARTICLES, ean);
+    const article = await findArticle(ean);
     pendingScan = { ean, article: article || null };
     els['qty-ean'].textContent = 'EAN ' + ean;
     if (article) {
@@ -1776,7 +1793,7 @@
   }
 
   async function handleScannedEANReception(ean) {
-    const article = await dbGet(STORE_ARTICLES, ean);
+    const article = await findArticle(ean);
     const codeArticle = article ? normalizeCode(article.codeArticle) : '';
     const attendu = codeArticle ? await dbGet(STORE_ATTENDU, codeArticle) : null;
     let statut;
